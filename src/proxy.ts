@@ -1,14 +1,15 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+// PERBAIKAN: Mengubah nama fungsi dari 'middleware' menjadi 'proxy'
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
-  // 1. Inisialisasi Client Supabase khusus untuk lingkungan Middleware
+  // 1. Inisialisasi Client Supabase khusus untuk lingkungan Proxy (Runtime)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -40,7 +41,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-// Skenario B: Jika user SUDAH login
+  // Skenario B: Jika user SUDAH login
   if (user) {
     // Ambil data role mereka dari tabel public.profiles
     const { data: profile } = await supabase
@@ -51,14 +52,14 @@ export async function middleware(request: NextRequest) {
 
     const role = profile?.role
 
-    // [PERBAIKAN CRITICAL]: Jika user punya session auth tapi profil/role tidak ditemukan di database,
-    // langsung lempar ke login, jangan di-redirect ke dashboard manapun untuk menghindari loop!
+    // Jika user punya session auth tapi profil/role tidak ditemukan di database,
+    // langsung lempar ke login untuk menghindari loop!
     if (!role) {
       url.pathname = '/login'
       return NextResponse.redirect(url)
     }
 
-    // Jika sudah login tapi iseng ketik URL /login, arahkan ke dashboard masing-masing
+    // Jika sudah login tapi membuka URL /login, arahkan ke dashboard masing-masing
     if (url.pathname.startsWith('/login')) {
       if (role === 'super_admin') url.pathname = '/super-admin'
       else if (role === 'admin') url.pathname = '/admin'
@@ -86,7 +87,7 @@ export async function middleware(request: NextRequest) {
   return response
 }
 
-// Menentukan rute mana saja yang harus diawasi oleh Middleware ini
+// Menentukan rute mana saja yang harus diawasi oleh Proxy ini
 export const config = {
   matcher: ['/user/:path*', '/admin/:path*', '/super-admin/:path*', '/login'],
 }
