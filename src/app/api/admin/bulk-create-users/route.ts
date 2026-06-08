@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+export async function POST(request: NextRequest) {
+  // 1. Ambil kredensial lingkungan di dalam runtime handler (Aman dari crash saat build)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  // 2. Guard clause: Berikan respons error internal yang jelas jika env gagal dimuat
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json(
+      { error: 'Konfigurasi environment variabel Supabase tidak ditemukan di server.' },
+      { status: 500 }
+    )
+  }
+
+  // 3. Inisialisasi Admin Client secara lokal/runtime
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-)
+  })
 
-export async function POST(request: NextRequest) {
   try {
     const { users } = await request.json() // Menerima array [ {username, email, password, role}, ... ]
 
