@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { motion, AnimatePresence, Variants } from 'framer-motion'
+import { ArrowLeft, Mic, Square, Radio, Play, CheckCircle2, AlertCircle, Loader2, Send } from 'lucide-react'
 
 export default function PodcastPage() {
   const router = useRouter()
@@ -43,17 +45,15 @@ export default function PodcastPage() {
     setAudioUrl('')
     setRecordingTime(0)
     setUploadStatus({})
-    audioChunksRef.current = [];
+    audioChunksRef.current = []
 
     try {
-      // Meminta izin mikrofon komputer LPKA
+      // Meminta izin mikrofon komputer
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       
-      // Catatan: Beberapa browser (seperti Chrome) tidak mendukung tipe 'audio/mp4' secara bawaan.
-      // Kita akan menangkap data mentah (audio/webm atau video/mp4 audio-only) lalu membungkusnya sebagai file .mp4 saat upload.
       const options = MediaRecorder.isTypeSupported('audio/mp4') 
         ? { mimeType: 'audio/mp4' } 
-        : undefined;
+        : undefined
 
       const mediaRecorder = new MediaRecorder(stream, options)
       mediaRecorderRef.current = mediaRecorder
@@ -65,7 +65,6 @@ export default function PodcastPage() {
       }
 
       mediaRecorder.onstop = () => {
-        // Gabungkan seluruh potongan audio menjadi satu Blob berkontainer mp4
         const blob = new Blob(audioChunksRef.current, { type: 'audio/mp4' })
         const url = URL.createObjectURL(blob)
         setAudioBlob(blob)
@@ -79,7 +78,10 @@ export default function PodcastPage() {
       setIsRecording(true)
     } catch (err) {
       console.error('Gagal mengakses mikrofon:', err)
-      setUploadStatus({ success: false, msg: 'Gagal mengakses mikrofon. Pastikan izin perangkat sudah diizinkan.' })
+      setUploadStatus({ 
+        success: false, 
+        msg: 'Gagal mengakses mikrofon. Pastikan izin perangkat sudah diaktifkan.' 
+      })
     }
   }
 
@@ -91,21 +93,17 @@ export default function PodcastPage() {
     }
   }
 
-  // 3. Fungsi Mengunggah File ke Supabase
+  // 3. Fungsi Mengunggah File ke Supabase Storage & Database
   const uploadPodcast = async () => {
     if (!audioBlob) return
     setIsUploading(true)
     setUploadStatus({})
 
     try {
-      // Ambil session user aktif untuk mendapatkan ID User
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Sesi pengguna tidak ditemukan. Silakan login kembali.')
 
-      // Buat nama file unik: folder_id_user/timestamp.mp4
       const fileName = `${user.id}/${Date.now()}-podcast.mp4`
-      
-      // Bungkus objek blob menjadi File siap kirim
       const fileToUpload = new File([audioBlob], 'podcast.mp4', { type: 'audio/mp4' })
 
       // A. Aksi unggah ke Supabase Storage Bucket
@@ -150,77 +148,157 @@ export default function PodcastPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Definisi Tipe Varian Animasi Aman TypeScript (Eror TS2322 Prevented)
+  const cardVariants: Variants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-xl mx-auto bg-white rounded-xl shadow-md p-8 border border-gray-100">
-        <button 
-          onClick={() => router.push('/user')}
-          className="mb-4 text-sm text-green-600 hover:underline font-semibold"
+    // Background murni putih (bg-white) sesuai arahan arsitektur UI baru
+    <div className="w-full min-h-[calc(100vh-4rem)] bg-white text-slate-800 p-4 md:p-8 selection:bg-emerald-500 selection:text-white">
+      <div className="max-w-xl mx-auto space-y-6 pb-16">
+        
+        {/* Tombol Navigasi Kembali */}
+        <div>
+          <button 
+            onClick={() => router.push('/user')}
+            className="group inline-flex items-center gap-2 text-sm text-slate-500 hover:text-emerald-600 font-bold transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 transform group-hover:-translate-x-0.5 transition-transform" />
+            Kembali ke Dashboard
+          </button>
+        </div>
+
+        {/* Kontainer Konten Utama */}
+        <motion.div 
+          initial="hidden"
+          animate="show"
+          variants={cardVariants}
+          className="bg-white rounded-2xl p-6 sm:p-10 border border-slate-200/90 shadow-xs space-y-6"
         >
-          ← Kembali ke Dashboard
-        </button>
-
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">🎙️ Sesi Praktik Rekaman Siniar (Podcast)</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          Gunakan fitur ini untuk melatih kelancaran berbicara dalam Bahasa Inggris. Rekaman kamu akan langsung dikirim ke panel pemantauan Mentor untuk dinilai.
-        </p>
-
-        {/* Kotak Visual Indikator Perekam */}
-        <div className="flex flex-col items-center justify-center bg-gray-900 rounded-xl p-8 text-white mb-6">
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>
-            <span className="text-2xl">🎙️</span>
+          {/* Header */}
+          <div className="space-y-1.5 border-b border-slate-100 pb-5">
+            <h2 className="text-2xl font-black tracking-tight text-slate-950 flex items-center gap-2.5">
+              <Radio className="w-6 h-6 text-emerald-600 shrink-0 animate-pulse" />
+              Sesi Praktik Rekaman Siniar
+            </h2>
+            <p className="text-sm font-medium text-slate-500 leading-relaxed">
+              Gunakan fitur ini untuk melatih kelancaran berbicara dalam Bahasa Inggris (*speaking fluency*). Berkas rekaman suara kamu akan langsung dikirim ke panel pemantauan Mentor untuk dievaluasi.
+            </p>
           </div>
-          
-          <span className="text-3xl font-mono font-bold tracking-wider mb-2">
-            {formatTime(recordingTime)}
-          </span>
-          <span className="text-xs text-gray-400">
-            {isRecording ? 'Sedang Merekam Suara...' : 'Perekam Siap Digunakan'}
-          </span>
-        </div>
 
-        {/* Tombol Kontrol Perekaman */}
-        <div className="flex gap-4 justify-center mb-6">
-          {!isRecording ? (
-            <button
-              onClick={startRecording}
-              disabled={isUploading}
-              className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold shadow transition disabled:bg-gray-400"
-            >
-              {audioUrl ? 'Rekam Ulang' : 'Mulai Rekam Suara'}
-            </button>
-          ) : (
-            <button
-              onClick={stopRecording}
-              className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold shadow transition"
-            >
-              Hentikan Rekaman
-            </button>
-          )}
-        </div>
-
-        {/* Area Review Audio sebelum dikirim */}
-        {audioUrl && !isRecording && (
-          <div className="bg-gray-100 rounded-lg p-4 mb-6 border border-gray-200">
-            <p className="text-xs font-bold text-gray-600 mb-2">Dengarkan Hasil Rekamanmu:</p>
-            <audio src={audioUrl} controls className="w-full mb-4" />
+          {/* Kotak Visual Indikator Kondisi Perekam Audio */}
+          <div className="flex flex-col items-center justify-center bg-slate-950 rounded-2xl p-8 text-white relative overflow-hidden border border-slate-900 shadow-inner">
+            {isRecording && (
+              <div className="absolute inset-0 bg-radial from-red-600/10 via-transparent to-transparent animate-pulse pointer-events-none" />
+            )}
             
+            {/* Animasi Ring Mikrofon */}
+            <div className="relative mb-4">
+              {isRecording && (
+                <span className="absolute inline-flex h-16 w-16 rounded-full bg-red-500/20 animate-ping" />
+              )}
+              <div className={`relative w-16 h-16 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-600 shadow-lg shadow-red-600/30' : 'bg-slate-800 border border-slate-700'}`}>
+                <Mic className={`w-6 h-6 ${isRecording ? 'text-white' : 'text-slate-300'}`} />
+              </div>
+            </div>
+            
+            <span className="text-4xl font-mono font-black tracking-wider mb-1.5 text-white">
+              {formatTime(recordingTime)}
+            </span>
+            <span className={`text-xs font-bold uppercase tracking-widest ${isRecording ? 'text-red-400 animate-pulse' : 'text-slate-400'}`}>
+              {isRecording ? 'LIVE • Recording Audio...' : 'Perekam Siap Digunakan'}
+            </span>
+          </div>
+
+          {/* Tombol Kontrol Perekaman */}
+          <div className="flex justify-center">
             <button
-              onClick={uploadPodcast}
+              type="button"
+              onClick={isRecording ? stopRecording : startRecording}
               disabled={isUploading}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow transition disabled:bg-gray-400"
+              className={`inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-sm text-white shadow-md transition-all cursor-pointer disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed ${
+                isRecording 
+                  ? 'bg-red-600 hover:bg-red-700 shadow-red-600/10' 
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-600/10'
+              }`}
             >
-              {isUploading ? 'Sedang Mengirim ke Server...' : '🚀 Kirim Rekaman ke Mentor'}
+              {isRecording ? (
+                <>
+                  <Square className="w-4 h-4 fill-current" />
+                  Hentikan Rekaman
+                </>
+              ) : (
+                <>
+                  <Mic className="w-4 h-4" />
+                  {audioUrl ? 'Rekam Ulang Suara' : 'Mulai Rekam Suara'}
+                </>
+              )}
             </button>
           </div>
-        )}
 
-        {/* Notifikasi Status Aksi */}
-        {uploadStatus.msg && (
-          <div className={`p-4 rounded-lg text-sm text-center font-medium ${uploadStatus.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {uploadStatus.success ? '✅ ' : '⚠️ '} {uploadStatus.msg}
-          </div>
-        )}
+          {/* Area Review Jalur Audio Sebelum Dikirim (AnimatePresence untuk Transisi Mulus) */}
+          <AnimatePresence>
+            {audioUrl && !isRecording && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-slate-50/70 rounded-2xl p-5 border border-slate-200/60 space-y-4 overflow-hidden"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <Play className="w-3.5 h-3.5 text-emerald-600 fill-current" /> 
+                  Dengarkan Hasil Rekamanmu:
+                </div>
+                
+                <audio src={audioUrl} controls className="w-full accent-emerald-600 h-10" />
+                
+                <button
+                  type="button"
+                  onClick={uploadPodcast}
+                  disabled={isUploading}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-950 hover:bg-slate-900 text-white rounded-xl font-bold text-sm shadow-lg shadow-slate-950/10 transition-all cursor-pointer disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sedang Mengirim ke Server...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Kirim Rekaman ke Mentor
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Notifikasi Status Aksi Penyerahan Berkas Siniar */}
+          <AnimatePresence>
+            {uploadStatus.msg && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                className={`p-4 rounded-xl text-sm font-semibold border flex items-start gap-2.5 ${
+                  uploadStatus.success 
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-200' 
+                    : 'bg-red-50 text-red-900 border-red-200'
+                }`}
+              >
+                {uploadStatus.success ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                )}
+                <span>{uploadStatus.msg}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </div>
     </div>
   )
