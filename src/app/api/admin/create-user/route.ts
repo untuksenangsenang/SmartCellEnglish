@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Inisialisasi Supabase khusus sisi server dengan Service Role Key (Bypass RLS & Auth Session)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+export async function POST(request: NextRequest) {
+  // 1. Ambil environment variables di dalam runtime handler (Aman dari crash build Vercel)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  // 2. Guard clause jika environment variables belum dikonfigurasi di dashboard Vercel
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json(
+      { error: 'Konfigurasi environment variabel Supabase tidak ditemukan di server.' },
+      { status: 500 }
+    )
+  }
+
+  // 3. Inisialisasi Supabase khusus sisi server dengan Service Role Key di dalam request scope
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-)
+  })
 
-export async function POST(request: NextRequest) {
   try {
     const { email, password, username, role } = await request.json()
 
@@ -21,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Semua kolom wajib diisi!' }, { status: 400 })
     }
 
-// 1. Daftarkan user ke sistem Auth Supabase secara paksa (Auto-Confirm Email)
+    // 1. Daftarkan user ke sistem Auth Supabase secara paksa (Auto-Confirm Email)
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -31,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     if (authError) throw authError
 
-    // 🔥 LANGKAH 2 (PERBAIKAN): Gunakan UPSERT agar otomatis INSERT jika kosong, atau UPDATE jika sudah ada
+    // 2. Gunakan UPSERT agar otomatis INSERT jika kosong, atau UPDATE jika sudah ada
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({ 

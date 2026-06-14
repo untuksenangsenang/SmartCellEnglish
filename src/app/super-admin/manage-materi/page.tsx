@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { motion } from 'framer-motion'
@@ -14,7 +14,8 @@ import {
   Sparkles, 
   Loader2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  UploadCloud
 } from 'lucide-react'
 
 // Interface untuk struktur soal di dalam JSONB
@@ -28,10 +29,17 @@ export default function ManageMateriPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // State Mode Konten: 'text' (Teks & Audio) atau 'file' (PDF/Word)
+  const [contentType, setContentType] = useState<'text' | 'file'>('text')
+
+  // State untuk Efek Visual Drag & Drop
+  const [isDragActive, setIsDragActive] = useState(false)
+
   // State untuk Data Modul Pembelajaran
   const [moduleTitle, setModuleTitle] = useState('')
   const [moduleContent, setModuleContent] = useState('')
   const [audioUrl, setAudioUrl] = useState('')
+  const [fileDoc, setFileDoc] = useState<File | null>(null)
 
   // State untuk Paket Kuis
   const [quizTitle, setQuizTitle] = useState('')
@@ -61,27 +69,58 @@ export default function ManageMateriPage() {
     setQuestions(updatedQuestions)
   }
 
-  // 3. Fungsi Utama Mengirim Data ke Supabase (Two-Way Insert)
+  // 3. Fungsi Utama Mengirim Data ke Supabase (Two-Way Insert + Storage Upload)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setStatus({})
 
     try {
-      // Validasi: Pastikan kunci jawaban terisi sesuai pilihan ganda
+      // Validasi Kuis: Pastikan kunci jawaban terisi sesuai pilihan ganda
       for (const q of questions) {
         if (!q.question || !q.correct_answer || q.options.some(opt => !opt)) {
           throw new Error('Semua kolom soal, pilihan ganda, dan kunci jawaban wajib ditentukan!')
         }
       }
 
-      // AKSI A: Masukkan data Modul ke tabel `public.modules`
+      let uploadedFileUrl = null
+      let uploadedFileType = null
+
+      // PROSES ALUR UPLOAD FILE (Jika memilih tipe dokumen)
+      if (contentType === 'file') {
+        if (!fileDoc) {
+          throw new Error('Silakan pilih atau jatuhkan file PDF/Word terlebih dahulu!')
+        }
+
+        const fileExt = fileDoc.name.split('.').pop()?.toLowerCase()
+        const fileName = `${Date.now()}.${fileExt}`
+        const filePath = `documents/${fileName}`
+
+        // Unggah file ke bucket storage 'modules'
+        const { error: uploadError } = await supabase.storage
+          .from('modules')
+          .upload(filePath, fileDoc)
+
+        if (uploadError) throw uploadError
+
+        // Dapatkan URL Publik dari berkas yang diunggah
+        const { data: { publicUrl } } = supabase.storage
+          .from('modules')
+          .getPublicUrl(filePath)
+
+        uploadedFileUrl = publicUrl
+        uploadedFileType = fileExt
+      }
+
+      // AKSI A: Masukkan data Modul ke tabel `public.modules` 
       const { data: moduleData, error: moduleError } = await supabase
         .from('modules')
         .insert({
           title: moduleTitle,
-          content_text: moduleContent,
-          audio_url: audioUrl || null
+          content_text: contentType === 'text' ? moduleContent : '',
+          audio_url: contentType === 'text' ? (audioUrl || null) : null,
+          file_url: contentType === 'file' ? uploadedFileUrl : null,
+          file_type: contentType === 'file' ? uploadedFileType : null
         })
         .select()
         .single()
@@ -94,17 +133,19 @@ export default function ManageMateriPage() {
         .insert({
           module_id: moduleData.id,
           title: quizTitle || `Kuis: ${moduleTitle}`,
-          questions: questions // Array objek disimpan langsung sebagai JSONB otomatis
+          questions: questions 
         })
 
       if (quizError) throw quizError
 
-      // Jika berhasil, bersihkan form
+      // Jika berhasil, bersihkan seluruh form
       setStatus({ success: true, msg: 'Modul Pembelajaran & Paket Kuis berhasil diterbitkan ke sistem!' })
       setModuleTitle('')
       setModuleContent('')
       setAudioUrl('')
+      setFileDoc(null)
       setQuizTitle('')
+      setContentType('text')
       setQuestions([{ question: '', options: ['', '', '', ''], correct_answer: '' }])
     } catch (error: any) {
       console.error(error)
@@ -120,6 +161,7 @@ export default function ManageMateriPage() {
         
         {/* Tombol Navigasi Kembali */}
         <button 
+          type="button"
           onClick={() => router.push('/super-admin')}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 border border-slate-200/60 hover:border-purple-200 rounded-xl transition-all cursor-pointer"
         >
@@ -133,7 +175,7 @@ export default function ManageMateriPage() {
             CMS: Penerbitan Modul & Kuis
           </h2>
           <p className="text-xs sm:text-sm font-medium text-slate-400 leading-relaxed">
-            Formulir satu pintu untuk mempublikasikan materi microlearning interaktif sekaligus paket evaluasi kuis secara terintegrasi.
+            Formulir satu pintu untuk mempublikasikan materi microlearning interaktif (Teks/Dokumen) sekaligus paket evaluasi kuis secara terintegrasi.
           </p>
         </div>
 
@@ -145,15 +187,44 @@ export default function ManageMateriPage() {
             animate={{ opacity: 1, y: 0 }}
             className="border border-slate-200/80 rounded-2xl p-5 sm:p-6 bg-white space-y-5 shadow-xs"
           >
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
-                <BookOpen className="w-4 h-4" />
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  Bagian 1: Materi Microlearning
+                </h3>
               </div>
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                Bagian 1: Materi Microlearning
-              </h3>
+
+              {/* Selector Tipe Konten Baru (Teks vs File) */}
+              <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/40">
+                <button
+                  type="button"
+                  onClick={() => setContentType('text')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                    contentType === 'text' 
+                      ? 'bg-white text-purple-600 shadow-xs' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <BookOpen className="w-3 h-3" /> Teks & Audio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContentType('file')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                    contentType === 'file' 
+                      ? 'bg-white text-purple-600 shadow-xs' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <FileText className="w-3 h-3" /> File Dokumen
+                </button>
+              </div>
             </div>
             
+            {/* Judul Modul */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 block">Judul Modul</label>
               <input
@@ -161,39 +232,86 @@ export default function ManageMateriPage() {
                 value={moduleTitle}
                 onChange={(e) => setModuleTitle(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all"
-                placeholder="Contoh: Pembelajaran Tense - Simple Past Tense"
+                placeholder="Contoh: Reading Section - Narrative Text Part 1"
                 required
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">Isi Materi Pembelajaran (Teks / Cerita)</label>
-              <textarea
-                value={moduleContent}
-                onChange={(e) => setModuleContent(e.target.value)}
-                rows={5}
-                className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all leading-relaxed"
-                placeholder="Tuliskan teks narasi atau materi penjelasan bahasa Inggris secara lengkap di sini..."
-                required
-              />
-            </div>
+            {/* FORM CONDITIONAL RENDERING BERDASARKAN TIPE KONTEN */}
+            {contentType === 'text' ? (
+              /* SUB-OPSI A: INPUT BERBASIS TEKS & AUDIO */
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                className="space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">Isi Materi Pembelajaran (Teks / Cerita)</label>
+                  <textarea
+                    value={moduleContent}
+                    onChange={(e) => setModuleContent(e.target.value)}
+                    rows={5}
+                    className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all leading-relaxed"
+                    placeholder="Tuliskan teks narasi atau materi penjelasan bahasa Inggris secara lengkap di sini..."
+                    required={contentType === 'text'}
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 inline-flex items-center gap-1">
-                <Music className="w-3.5 h-3.5 text-slate-400" /> 
-                URL Audio Pengucapan Native Speaker <span className="text-slate-400 font-normal">(Opsional)</span>
-              </label>
-              <input
-                type="url"
-                value={audioUrl}
-                onChange={(e) => setAudioUrl(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all"
-                placeholder="https://example.com/audio-native.mp3"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 inline-flex items-center gap-1">
+                    <Music className="w-3.5 h-3.5 text-slate-400" /> 
+                    URL Audio Pengucapan Native Speaker <span className="text-slate-400 font-normal">(Opsional)</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={audioUrl}
+                    onChange={(e) => setAudioUrl(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all"
+                    placeholder="https://example.com/audio-native.mp3"
+                  />
+                </div>
+              </motion.div>
+            ) : (
+              /* SUB-OPSI B: DRAG & DROP FILE DOKUMEN */
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }}
+                className="space-y-1.5"
+              >
+                <label className="text-xs font-bold text-slate-700 block">Unggah Dokumen Pembelajaran</label>
+                
+                {/* Kotak Area Drop yang Reaktif Mengikuti State isDragActive */}
+                <div className={`w-full border-2 border-dashed rounded-xl p-6 transition-all flex flex-col items-center justify-center text-center relative group ${
+                  isDragActive 
+                    ? 'border-purple-600 bg-purple-50/80 scale-[1.01] shadow-md shadow-purple-100' 
+                    : 'border-slate-200 bg-slate-50/50 hover:border-purple-400'
+                }`}>
+                  <input 
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => setFileDoc(e.target.files?.[0] || null)}
+                    onDragEnter={() => setIsDragActive(true)}
+                    onDragLeave={() => setIsDragActive(false)}
+                    onDrop={() => setIsDragActive(false)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    required={contentType === 'file'}
+                  />
+                  <UploadCloud className={`w-8 h-8 mb-2 transition-colors ${
+                    isDragActive ? 'text-purple-600 animate-bounce' : 'text-slate-400 group-hover:text-purple-500'
+                  }`} />
+                  
+                  <span className="text-sm font-bold text-slate-700 block">
+                    {fileDoc ? fileDoc.name : 'Pilih atau Jatuhkan berkas Word (.doc, .docx) atau PDF di sini'}
+                  </span>
+                  <span className="text-xs text-slate-400 block mt-1">
+                    {fileDoc ? `Ukuran: ${(fileDoc.size / 1024 / 1024).toFixed(2)} MB` : 'Maksimal ukuran file disarankan 10MB'}
+                  </span>
+                </div>
+              </motion.div>
+            )}
           </motion.div>
 
-          {/* BAGIAN II: INPUT KUIS (DYNAMIC JSONB FORM) */}
+          {/* BAGIAN II: INPUT KUIS */}
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -216,7 +334,7 @@ export default function ManageMateriPage() {
                 value={quizTitle}
                 onChange={(e) => setQuizTitle(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 focus:outline-none transition-all"
-                placeholder="Contoh: Kuis Harian - Evaluasi Past Tense"
+                placeholder="Contoh: Kuis Evaluasi Pemahaman Modul"
               />
             </div>
 
@@ -263,7 +381,7 @@ export default function ManageMateriPage() {
                     ))}
                   </div>
 
-                  {/* Pilih Kunci Jawaban Dropdown Dinamis (Anti-Typo) */}
+                  {/* Kunci Jawaban Dropdown */}
                   <div className="space-y-1.5 bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
                     <label className="block text-xs font-bold text-slate-700">
                       Kunci Jawaban yang Benar:
