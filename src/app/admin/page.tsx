@@ -15,8 +15,24 @@ import {
   Award,
   Music,
   Loader2,
-  ChevronRight
+  TrendingUp,
+  Percent,
+  FileAudio
 } from 'lucide-react'
+
+// Import komponen chart dari Recharts
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts'
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -27,6 +43,9 @@ export default function AdminDashboard() {
   const [podcasts, setPodcasts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'kuis' | 'podcast'>('kuis')
+  
+  // State untuk menghindari error hidrasi SSR Recharts di Next.js
+  const [mounted, setMounted] = useState(false)
 
   // Ambil data gabungan dari database
   useEffect(() => {
@@ -58,6 +77,7 @@ export default function AdminDashboard() {
       if (quizData) setQuizAttempts(quizData)
       if (podcastData) setPodcasts(podcastData)
       setIsLoading(false)
+      setMounted(true)
     }
 
     fetchMonitorData()
@@ -69,37 +89,68 @@ export default function AdminDashboard() {
     router.refresh()
   }
 
+  // ==========================================
+  // 📈 DATA PROCESSING UTILITIES FOR CHARTS
+  // ==========================================
+
+  // 1. Hitung Ringkasan Metrik Singkat (Statistik Atas)
+  const totalQuizAttempts = quizAttempts.length
+  const totalPodcastSubmissions = podcasts.length
+  const averageQuizScore = totalQuizAttempts > 0 
+    ? Math.round(quizAttempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / totalQuizAttempts) 
+    : 0
+
+  // 2. Olah Data Grafik: Rata-rata Skor per Modul Kuis (Bar Chart)
+  const getQuizPerformanceData = () => {
+    const grouped = quizAttempts.reduce((acc: any, curr) => {
+      const title = curr.quizzes?.title || 'Kuis Umum'
+      if (!acc[title]) {
+        acc[title] = { name: title, totalScore: 0, count: 0 }
+      }
+      acc[title].totalScore += curr.score || 0
+      acc[title].count += 1
+      return acc;
+    }, {})
+
+    return Object.values(grouped).map((item: any) => ({
+      name: item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name,
+      'Rata-rata Nilai': Math.round(item.totalScore / item.count),
+      'Total Peserta': item.count
+    }))
+  }
+
+  // 3. Olah Data Grafik: Aktivitas Harian Kuis vs Podcast (Area Chart - Last 7 Days)
+  const getActivityTimelineData = () => {
+    const timelineMap: any = {}
+
+    // Helper untuk format tanggal readable singkat (contoh: "24 Jun")
+    const formatDate = (dateStr: string) => {
+      return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+    }
+
+    // Masukkan data kuis ke linimasa
+    quizAttempts.forEach(q => {
+      const dateKey = formatDate(q.created_at)
+      if (!timelineMap[dateKey]) timelineMap[dateKey] = { date: dateKey, 'Pengerjaan Kuis': 0, 'Setor Podcast': 0 }
+      timelineMap[dateKey]['Pengerjaan Kuis'] += 1
+    })
+
+    // Masukkan data podcast ke linimasa
+    podcasts.forEach(p => {
+      const dateKey = formatDate(p.created_at)
+      if (!timelineMap[dateKey]) timelineMap[dateKey] = { date: dateKey, 'Pengerjaan Kuis': 0, 'Setor Podcast': 0 }
+      timelineMap[dateKey]['Setor Podcast'] += 1
+    })
+
+    // Urutkan dan ambil maksimal 7 data hari terakhir aktivitas berjalan
+    return Object.values(timelineMap).slice(-7)
+  }
+
   return (
     <div className="w-full min-h-screen bg-white text-slate-800 p-0 selection:bg-purple-600 selection:text-white">
-      
-      {/* 1. PREMIUM HEADER / NAVBAR */}
-      <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-8 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-950 flex items-center justify-center text-white font-black text-sm tracking-tighter">
-              SE
-            </div>
-            <div>
-              <h1 className="text-sm font-black text-slate-950 tracking-tight uppercase">
-                SMART CELL ENGLISH
-              </h1>
-              <p className="text-[10px] font-bold text-purple-600 tracking-wider uppercase">
-                Panel Kontrol Mentor LPKA
-              </p>
-            </div>
-          </div>
-
-          <button 
-            onClick={handleLogout}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200/60 hover:border-rose-200 rounded-xl transition-all cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" /> Keluar
-          </button>
-        </div>
-      </nav>
 
       {/* 2. MAIN CONTENT WRAPPER */}
-      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 pb-24">
+      <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 pb-24">
         
         {/* Welcome Card Banner */}
         <motion.div 
@@ -117,6 +168,115 @@ export default function AdminDashboard() {
             </p>
           </div>
         </motion.div>
+
+        {/* 📊 NEW ANALYTICS SECTION: STAT CARDS (Hanya Muncul Jika Loading Selesai) */}
+        {!isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex items-center gap-4 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Total Log Kuis</p>
+                <h3 className="text-xl font-black text-slate-950 tracking-tight">{totalQuizAttempts} <span className="text-xs font-medium text-slate-400">Pengerjaan</span></h3>
+              </div>
+            </div>
+
+            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex items-center gap-4 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Percent className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Rata-rata Nilai</p>
+                <h3 className="text-xl font-black text-slate-950 tracking-tight">
+                  {averageQuizScore} <span className="text-xs font-medium text-slate-400">/ 100</span>
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex items-center gap-4 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <FileAudio className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Arsip Podcast</p>
+                <h3 className="text-xl font-black text-slate-950 tracking-tight">{totalPodcastSubmissions} <span className="text-xs font-medium text-slate-400">Audio (.mp4)</span></h3>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 📊 NEW ANALYTICS SECTION: DATA CHARTS & GRAPHICS */}
+        {!isLoading && mounted && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Grafik I: Performa Nilai Modul Kuis */}
+            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl space-y-4 shadow-2xs">
+              <div>
+                <h3 className="text-xs font-black text-slate-950 tracking-tight uppercase flex items-center gap-1.5">
+                  <span className="w-1.5 h-3 bg-purple-600 rounded-xs inline-block" />
+                  Rata-rata Skor per Modul Pembelajaran
+                </h3>
+                <p className="text-[11px] font-medium text-slate-400">Evaluasi efektivitas penyerapan pemahaman kuis siswa</p>
+              </div>
+              <div className="w-full h-64 text-[11px]">
+                {getQuizPerformanceData().length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400 font-medium border border-dashed border-slate-100 rounded-xl">Belum ada aktivitas grafik</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={getQuizPerformanceData()} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ background: '#0f172a', borderRadius: '12px', color: '#fff', fontSize: '11px', border: 'none' }} />
+                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                      <Bar dataKey="Rata-rata Nilai" fill="#8b5cf6" radius={[6, 6, 0, 0]} barSize={24} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Grafik II: Garis Tren Aktivitas Harian */}
+            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl space-y-4 shadow-2xs">
+              <div>
+                <h3 className="text-xs font-black text-slate-950 tracking-tight uppercase flex items-center gap-1.5">
+                  <span className="w-1.5 h-3 bg-emerald-500 rounded-xs inline-block" />
+                  Tren Aktivitas Belajar (7 Hari Terakhir)
+                </h3>
+                <p className="text-[11px] font-medium text-slate-400">Frekuensi interaksi siswa mengumpulkan tugas harian</p>
+              </div>
+              <div className="w-full h-64 text-[11px]">
+                {getActivityTimelineData().length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400 font-medium border border-dashed border-slate-100 rounded-xl">Belum ada lini masa aktivitas</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={getActivityTimelineData()} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorKuis" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#c084fc" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#c084fc" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorPodcast" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#34d399" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{ background: '#0f172a', borderRadius: '12px', color: '#fff', fontSize: '11px', border: 'none' }} />
+                      <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                      <Area type="monotone" dataKey="Pengerjaan Kuis" stroke="#a855f7" strokeWidth={2} fillOpacity={1} fill="url(#colorKuis)" />
+                      <Area type="monotone" dataKey="Setor Podcast" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPodcast)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+          </div>
+        )}
 
         {/* 3. CONTROLS & NAVIGATION TABS */}
         <div className="space-y-4">

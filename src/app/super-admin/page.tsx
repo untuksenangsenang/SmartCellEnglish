@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { motion } from 'framer-motion'
 import { 
-  Users, 
   BookOpen, 
   UserPlus, 
   ArrowRight, 
   ShieldAlert, 
-  LogOut,
-  Lock
+  Lock,
+  Video // Menambahkan ikon Video untuk manajemen video
 } from 'lucide-react'
 
 export default function SuperAdminDashboard() {
@@ -29,13 +28,7 @@ export default function SuperAdminDashboard() {
     getAdminData()
   }, [supabase])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
-  }
-
-  // Konfigurasi Menu Kontrol Utama Super Admin (Sesuai Struktur User Dashboard)
+  // Konfigurasi Menu Kontrol Utama Super Admin (Kini Berjumlah 3 Kolom Simetris)
   const menuItems = [
     {
       title: "CMS Konten Materi",
@@ -54,17 +47,25 @@ export default function SuperAdminDashboard() {
       borderHover: "hover:border-indigo-300 hover:shadow-indigo-100/50",
       link: "/super-admin/manage-users",
       actionText: "Registrasi Akun"
+    },
+    {
+      title: "Manajemen Video",
+      desc: "Unggah, pantau, dan kelola tautan video pembelajaran interaktif dari YouTube Smart Cell English untuk ruang belajar siswa.",
+      icon: Video,
+      bgColor: "bg-purple-50 text-purple-600",
+      borderHover: "hover:border-purple-300 hover:shadow-purple-100/50",
+      link: "/super-admin/manage-videos", // Terhubung ke halaman manajemen video baru
+      actionText: "Kelola Video"
     }
   ]
 
   return (
     <div className="w-full min-h-screen bg-white text-slate-800 selection:bg-purple-600 selection:text-white">
       
-
       {/* Konten Utama Container */}
       <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 pb-16">
         
-        {/* Banner Selamat Datang & Jumbotron Utama (Style Relevan) */}
+        {/* Banner Selamat Datang & Jumbotron Utama */}
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -88,7 +89,7 @@ export default function SuperAdminDashboard() {
           </div>
         </motion.div>
 
-        {/* Grid Aktivitas Kontrol (Menggunakan Map Array 3 Kolom Simetris) */}
+        {/* Grid Aktivitas Kontrol (3 Kolom Sejajar dan Presisi) */}
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -118,6 +119,7 @@ export default function SuperAdminDashboard() {
 
               <div className="pt-6">
                 <button
+                  type="button"
                   onClick={() => router.push(item.link)}
                   className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-purple-50 border border-slate-200/60 hover:border-purple-200 text-slate-700 hover:text-purple-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
                 >
