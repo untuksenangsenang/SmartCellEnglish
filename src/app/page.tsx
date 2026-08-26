@@ -89,12 +89,12 @@ function AnimatedBar({ label, target }: { label: string; target: number }) {
     <div ref={ref} className="mb-5 last:mb-0">
       <div className="flex justify-between text-sm mb-2">
         <span className="font-semibold text-slate-800">{label}</span>
-        <span className="font-bold text-[#0d3d2e]">{pct}%</span>
+        <span className="font-bold text-blue-700">{pct}%</span>
       </div>
       <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-[1200ms] ease-out"
-          style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#0d3d2e,#d4f244)' }}
+          style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#1e40af,#60a5fa)' }}
         />
       </div>
     </div>
@@ -110,9 +110,9 @@ function StatItem({ target, suffix, label }: { target: number; suffix?: string; 
         <span ref={ref} className="text-4xl md:text-5xl font-black text-white leading-none">
           {value}
         </span>
-        <span className="text-4xl md:text-5xl font-black text-[#d4f244] leading-none">{suffix}</span>
+        <span className="text-4xl md:text-5xl font-black text-blue-300 leading-none">{suffix}</span>
       </div>
-      <div className="w-8 h-0.5 bg-[#d4f244]" />
+      <div className="w-8 h-0.5 bg-blue-300" />
       <p className="text-sm text-white/60 font-medium pt-1">{label}</p>
     </div>
   )
@@ -150,11 +150,11 @@ function FeatureCard({
         {num}
       </span>
       <div className="relative pt-6 pb-2">
-        <div className="w-10 h-10 rounded-xl bg-[#d4f244] flex items-center justify-center mb-4 text-[#0d3d2e]
+        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-4 text-blue-700
           group-hover:scale-110 transition-transform duration-300">
           {icon}
         </div>
-        <div className="w-6 h-0.5 bg-[#d4f244] mb-3" />
+        <div className="w-6 h-0.5 bg-blue-400 mb-3" />
         <h3 className="text-lg font-bold text-slate-900 mb-2">{title}</h3>
         <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
       </div>
@@ -181,23 +181,23 @@ export default function Home() {
   }
 
   return (
-    <div className="w-full bg-white text-slate-900 scroll-smooth selection:bg-[#d4f244] selection:text-[#0d3d2e]">
+    <div className="w-full bg-white text-slate-900 scroll-smooth selection:bg-blue-200 selection:text-blue-900">
 
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
       <section
         className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden px-6 md:px-16 lg:px-24"
-        style={{ background: '#0d3d2e' }}
+        style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%)' }}
       >
         {/* Decorative circles */}
-        <div className="pointer-events-none absolute top-10 right-[38%] w-4 h-4 rounded-full bg-[#d4f244]" />
-        <div className="pointer-events-none absolute top-20 right-[34%] w-2.5 h-2.5 rounded-full bg-[#d4f244]/60" />
+        <div className="pointer-events-none absolute top-10 right-[38%] w-4 h-4 rounded-full bg-blue-300" />
+        <div className="pointer-events-none absolute top-20 right-[34%] w-2.5 h-2.5 rounded-full bg-blue-300/60" />
         <div
           className="pointer-events-none absolute -right-24 top-1/2 -translate-y-1/2 w-[420px] h-[420px] rounded-full border-[80px] opacity-20"
-          style={{ borderColor: '#d4f244' }}
+          style={{ borderColor: '#93c5fd' }}
         />
         <div
           className="pointer-events-none absolute right-32 bottom-8 w-28 h-28 rounded-full"
-          style={{ background: '#d4f244', opacity: 0.15 }}
+          style={{ background: '#bfdbfe', opacity: 0.15 }}
         />
 
         <div className="relative z-10 w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center py-20">
@@ -210,7 +210,7 @@ export default function Home() {
               transition={{ duration: 0.5 }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/20 text-white/70 text-xs font-semibold tracking-widest uppercase"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#d4f244]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-300" />
               Digital Learning Ecosystem
             </motion.div>
 
@@ -221,7 +221,7 @@ export default function Home() {
               className="text-4xl sm:text-5xl md:text-6xl font-black leading-[1.08] tracking-tight text-white"
             >
               Platform belajar{' '}
-              <span style={{ color: '#d4f244' }}>terbaik</span>{' '}
+              <span className="text-blue-300">terbaik</span>{' '}
               untuk masa depan.
             </motion.h1>
 
@@ -232,7 +232,7 @@ export default function Home() {
               className="text-sm text-white/60 font-medium min-h-[1.5rem]"
             >
               {typed}
-              <span className="inline-block w-0.5 h-4 bg-[#d4f244] ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
+              <span className="inline-block w-0.5 h-4 bg-blue-300 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
             </motion.div>
 
             <motion.div
@@ -243,8 +243,7 @@ export default function Home() {
             >
               <button
                 onClick={() => router.push('/login')}
-                className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-bold text-sm text-[#0d3d2e] hover:brightness-90 transition-all duration-200 hover:-translate-y-0.5"
-                style={{ background: '#d4f244' }}
+                className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-bold text-sm text-blue-900 bg-blue-300 hover:bg-blue-200 transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-blue-900/30"
               >
                 Mulai Belajar
                 <ArrowRight className="w-4 h-4" />
@@ -285,9 +284,9 @@ export default function Home() {
             >
               <div
                 className="w-[280px] h-[280px] rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(212,242,68,0.1)' }}
+                style={{ background: 'rgba(147,197,253,0.15)' }}
               >
-                <BookMarked className="w-24 h-24 text-[#d4f244] opacity-80" />
+                <BookMarked className="w-24 h-24 text-blue-300 opacity-80" />
               </div>
             </div>
 
@@ -297,8 +296,8 @@ export default function Home() {
               transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
               className="absolute -left-6 top-12 bg-white rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3"
             >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#d4f244' }}>
-                <Star className="w-4 h-4 text-[#0d3d2e] fill-[#0d3d2e]" />
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-blue-100">
+                <Star className="w-4 h-4 text-blue-600 fill-blue-600" />
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-900">Top Learner</p>
@@ -312,7 +311,7 @@ export default function Home() {
               transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
               className="absolute -right-4 bottom-16 bg-white rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3"
             >
-              <div className="w-9 h-9 rounded-xl bg-[#0d3d2e] flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center">
                 <Users className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -336,16 +335,15 @@ export default function Home() {
             variants={fadeUp}
             className="space-y-6 lg:sticky lg:top-24"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest"
-              style={{ background: '#0d3d2e', color: '#d4f244' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#d4f244]" />
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest bg-blue-700 text-blue-100">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-300" />
               Dijamin & Terstruktur
             </div>
             <h2 className="text-3xl md:text-4xl font-black leading-tight tracking-tight text-slate-900">
               Belajar online{' '}
               <span className="relative">
                 kapan saja
-                <span className="absolute -bottom-1 left-0 w-full h-1 rounded-full" style={{ background: '#d4f244' }} />
+                <span className="absolute -bottom-1 left-0 w-full h-1 rounded-full bg-blue-400" />
               </span>{' '}
               & di mana saja.
             </h2>
@@ -354,8 +352,7 @@ export default function Home() {
             </p>
             <button
               onClick={() => router.push('/login')}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm text-white transition-all hover:-translate-y-0.5"
-              style={{ background: '#0d3d2e' }}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm text-white bg-blue-700 hover:bg-blue-800 transition-all hover:-translate-y-0.5"
             >
               Pelajari Lebih Lanjut <ArrowRight className="w-4 h-4" />
             </button>
@@ -398,7 +395,7 @@ export default function Home() {
       </section>
 
       {/* ── 3. PROGRESS DEMO ──────────────────────────────────────────────── */}
-      <section className="py-24 px-6 md:px-16 lg:px-24" style={{ background: '#f7fdf5' }}>
+      <section className="py-24 px-6 md:px-16 lg:px-24 bg-blue-50">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <motion.div
             initial="hidden"
@@ -408,9 +405,8 @@ export default function Home() {
             className="space-y-5"
           >
             <motion.div variants={fadeUp}>
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest"
-                style={{ background: '#0d3d2e', color: '#d4f244' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#d4f244]" />
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest bg-blue-700 text-blue-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-300" />
                 Progress Belajar
               </span>
             </motion.div>
@@ -423,8 +419,7 @@ export default function Home() {
             <motion.button
               variants={fadeUp}
               onClick={() => router.push('/login')}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm text-[#0d3d2e] hover:brightness-90 transition-all hover:-translate-y-0.5"
-              style={{ background: '#d4f244' }}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm text-white bg-blue-600 hover:bg-blue-700 transition-all hover:-translate-y-0.5 shadow-md shadow-blue-200"
             >
               Lihat Dashboard <ArrowRight className="w-4 h-4" />
             </motion.button>
@@ -435,7 +430,7 @@ export default function Home() {
             whileInView="visible"
             viewport={{ once: true, margin: '-60px' }}
             variants={fadeUp}
-            className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100"
+            className="bg-white rounded-3xl p-8 shadow-sm border border-blue-100"
           >
             <AnimatedBar label="Vocabulary Basics"      target={82} />
             <AnimatedBar label="Grammar Fundamentals"  target={61} />
@@ -446,12 +441,13 @@ export default function Home() {
       </section>
 
       {/* ── 4. CTA ────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6 md:px-16 lg:px-24 relative overflow-hidden text-center" style={{ background: '#0d3d2e' }}>
+      <section
+        className="py-24 px-6 md:px-16 lg:px-24 relative overflow-hidden text-center"
+        style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)' }}
+      >
         {/* Decorative */}
-        <div className="pointer-events-none absolute -left-20 -bottom-20 w-72 h-72 rounded-full opacity-10"
-          style={{ background: '#d4f244' }} />
-        <div className="pointer-events-none absolute -right-20 -top-20 w-96 h-96 rounded-full opacity-10"
-          style={{ background: '#d4f244' }} />
+        <div className="pointer-events-none absolute -left-20 -bottom-20 w-72 h-72 rounded-full opacity-10 bg-blue-300" />
+        <div className="pointer-events-none absolute -right-20 -top-20 w-96 h-96 rounded-full opacity-10 bg-blue-300" />
 
         <motion.div
           initial="hidden"
@@ -462,7 +458,7 @@ export default function Home() {
         >
           <motion.h2 variants={fadeUp} className="text-3xl md:text-5xl font-black text-white tracking-tight leading-tight">
             Siap melangkah<br />
-            <span style={{ color: '#d4f244' }}>lebih jauh?</span>
+            <span className="text-blue-300">lebih jauh?</span>
           </motion.h2>
           <motion.p variants={fadeUp} className="text-sm text-white/60 leading-relaxed max-w-md mx-auto">
             Gunakan kredensial akun internal yang didaftarkan Administrator untuk masuk ke sistem monitoring bimbingan.
@@ -470,13 +466,12 @@ export default function Home() {
           <motion.div variants={fadeUp} className="flex flex-wrap gap-3 justify-center pt-2">
             <button
               onClick={() => router.push('/login')}
-              className="px-8 py-3.5 rounded-full font-bold text-sm text-[#0d3d2e] hover:brightness-90 transition-all hover:-translate-y-0.5"
-              style={{ background: '#d4f244' }}
+              className="px-8 py-3.5 rounded-full font-bold text-sm text-blue-900 bg-blue-300 hover:bg-blue-200 transition-all hover:-translate-y-0.5 shadow-lg shadow-blue-900/30"
             >
               Masuk ke Portal Belajar
             </button>
           </motion.div>
-          <motion.p variants={fadeUp} className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          <motion.p variants={fadeUp} className="text-xs text-white/30">
             Akses hanya untuk Anak Binaan terdaftar · Hubungi Admin jika belum memiliki akun
           </motion.p>
         </motion.div>

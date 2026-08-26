@@ -10,7 +10,8 @@ import {
   ArrowRight, 
   ShieldAlert, 
   Lock,
-  Video // Menambahkan ikon Video untuk manajemen video
+  Video,
+  ClipboardList
 } from 'lucide-react'
 
 export default function SuperAdminDashboard() {
@@ -28,7 +29,7 @@ export default function SuperAdminDashboard() {
     getAdminData()
   }, [supabase])
 
-  // Konfigurasi Menu Kontrol Utama Super Admin (Kini Berjumlah 3 Kolom Simetris)
+  // Konfigurasi Menu Kontrol Utama Super Admin (Kini Berjumlah 4 Kolom Grid)
   const menuItems = [
     {
       title: "CMS Konten Materi",
@@ -54,8 +55,17 @@ export default function SuperAdminDashboard() {
       icon: Video,
       bgColor: "bg-purple-50 text-purple-600",
       borderHover: "hover:border-purple-300 hover:shadow-purple-100/50",
-      link: "/super-admin/manage-videos", // Terhubung ke halaman manajemen video baru
+      link: "/super-admin/manage-videos",
       actionText: "Kelola Video"
+    },
+    {
+      title: "Pekerjaan Rumah (PR)",
+      desc: "Unggah, rancang, dan kategorikan tugas Pekerjaan Rumah (PR) bagi siswa berdasarkan kategori Mata Pelajaran (Mapel).",
+      icon: ClipboardList,
+      bgColor: "bg-emerald-50 text-emerald-600",
+      borderHover: "hover:border-emerald-300 hover:shadow-emerald-100/50",
+      link: "/super-admin/manage-homework",
+      actionText: "Kelola PR"
     }
   ]
 
@@ -89,12 +99,12 @@ export default function SuperAdminDashboard() {
           </div>
         </motion.div>
 
-        {/* Grid Aktivitas Kontrol (3 Kolom Sejajar dan Presisi) */}
+        {/* Grid Aktivitas Kontrol (4 Kolom Grid) */}
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
         >
           {menuItems.map((item, idx) => (
             <motion.div

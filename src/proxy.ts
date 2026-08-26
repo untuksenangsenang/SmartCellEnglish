@@ -32,7 +32,48 @@ export async function proxy(request: NextRequest) {
   )
 
   // 2. Ambil data session user yang sedang aktif dari Supabase Auth
-  const { data: { user } } = await supabase.auth.getUser()
+  let user: any = null;
+  let role: string | null = null;
+  let isOfflineFallback = false;
+
+  try {
+    const { data: authData, error } = await supabase.auth.getUser()
+    
+    if (error) {
+      throw error;
+    }
+    
+    user = authData.user;
+    
+    if (user) {
+      // Ambil data role mereka dari tabel public.profiles
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+        
+      role = profile?.role;
+    }
+  } catch (error: any) {
+    // Tangani error jaringan (Offline)
+    console.warn("Supabase Auth Error di Proxy (mungkin offline):", error.message);
+    
+    // OFFLINE FALLBACK: Cek apakah ada cookie sesi yang valid
+    const cookies = request.cookies.getAll();
+    const hasAuthCookie = cookies.some(c => c.name.includes('-auth-token'));
+    
+    if (hasAuthCookie) {
+      console.log("Menggunakan fallback offline, cookie auth ditemukan.");
+      isOfflineFallback = true;
+      // Kita asumsikan user sudah login jika ada cookie, 
+      // namun kita tidak bisa membaca profil role dari DB saat offline.
+      // Untuk PWA, kita izinkan lewat karena service worker akan melayani file lokal.
+      user = { id: 'offline-user' };
+      role = 'user'; // Secara default beri akses sebagai user
+    }
+  }
+
   const url = request.nextUrl.clone()
 
   // Skenario A: Jika user BELUM login dan mencoba masuk ke area terproteksi
@@ -43,20 +84,14 @@ export async function proxy(request: NextRequest) {
 
   // Skenario B: Jika user SUDAH login
   if (user) {
-    // Ambil data role mereka dari tabel public.profiles
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const role = profile?.role
-
-    // Jika user punya session auth tapi profil/role tidak ditemukan di database,
-    // langsung lempar ke login untuk menghindari loop!
-    if (!role) {
-      url.pathname = '/login'
-      return NextResponse.redirect(url)
+    // Jika offline fallback, kita lewati verifikasi role database agar PWA tetap bisa memuat UI
+    if (!isOfflineFallback) {
+      // Jika user punya session auth tapi profil/role tidak ditemukan di database,
+      // langsung lempar ke login untuk menghindari loop!
+      if (!role) {
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
+      }
     }
 
     // Jika sudah login tapi membuka URL /login, arahkan ke dashboard masing-masing

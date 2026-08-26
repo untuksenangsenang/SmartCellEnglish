@@ -101,37 +101,47 @@ export default function UserDashboard() {
   }
 
   const menuItems = [
-    {
-      title: "Microlearning Modules",
-      desc: "Pelajari materi bahasa Inggris harian ringkas yang dilengkapi dengan audio langsung dari penutur asli.",
-      icon: BookOpen,
-      bgColor: "bg-emerald-50 text-emerald-600",
-      borderHover: "hover:border-emerald-300 hover:shadow-emerald-100/50",
-      link: "/user/modules",
-      actionText: "Buka Materi",
-      accentColor: "group-hover:text-emerald-600"
-    },
-    {
-      title: "Podcast Recorder (.MP3)",
-      desc: "Ruang ekspresi dan sesi praktik speaking. Rekam suaramu langsung di browser lalu kumpulkan ke mentor.",
-      icon: Mic,
-      bgColor: "bg-teal-50 text-teal-600",
-      borderHover: "hover:border-teal-300 hover:shadow-teal-100/50",
-      link: "/user/podcast",
-      actionText: "Mulai Rekaman",
-      accentColor: "group-hover:text-teal-600"
-    },
-    {
-      title: "Video Learning",
-      desc: "Tonton video edukasi interaktif pilihan untuk meningkatkan pemahaman listening dan struktur bahasamu.",
-      icon: Video,
-      bgColor: "bg-amber-50 text-amber-600",
-      borderHover: "hover:border-amber-300 hover:shadow-amber-100/50",
-      link: "/user/videos",
-      actionText: "Tonton Video",
-      accentColor: "group-hover:text-amber-600"
-    }
-  ]
+  {
+    title: "Microlearning Modules",
+    desc: "Pelajari materi bahasa Inggris harian ringkas yang dilengkapi dengan audio langsung dari penutur asli.",
+    icon: BookOpen,
+    bgColor: "bg-emerald-50 text-emerald-600",
+    borderHover: "hover:border-emerald-300 hover:shadow-emerald-100/50",
+    link: "/user/modules",
+    actionText: "Buka Materi",
+    accentColor: "group-hover:text-emerald-600"
+  },
+  {
+    title: "Homework",
+    desc: "Lihat Pekerjaan Rumah yang diberikan oleh pengajar, lengkap dengan mata pelajaran, instruksi tugas, dan tenggat waktu.",
+    icon: BookOpen,
+    bgColor: "bg-purple-50 text-purple-600",
+    borderHover: "hover:border-purple-300 hover:shadow-purple-100/50",
+    link: "/user/homework",
+    actionText: "Lihat Homework",
+    accentColor: "group-hover:text-purple-600"
+  },
+  {
+    title: "Podcast Recorder (.MP3)",
+    desc: "Ruang ekspresi dan sesi praktik speaking. Rekam suaramu langsung di browser lalu kumpulkan ke mentor.",
+    icon: Mic,
+    bgColor: "bg-teal-50 text-teal-600",
+    borderHover: "hover:border-teal-300 hover:shadow-teal-100/50",
+    link: "/user/podcast",
+    actionText: "Mulai Rekaman",
+    accentColor: "group-hover:text-teal-600"
+  },
+  {
+    title: "Video Learning",
+    desc: "Tonton video edukasi interaktif pilihan untuk meningkatkan pemahaman listening dan struktur bahasamu.",
+    icon: Video,
+    bgColor: "bg-amber-50 text-amber-600",
+    borderHover: "hover:border-amber-300 hover:shadow-amber-100/50",
+    link: "/user/videos",
+    actionText: "Tonton Video",
+    accentColor: "group-hover:text-amber-600"
+  }
+]
 
   return (
     <div className="w-full min-h-[calc(100vh-4rem)] bg-white text-slate-800 p-4 md:p-8 selection:bg-emerald-500 selection:text-white">

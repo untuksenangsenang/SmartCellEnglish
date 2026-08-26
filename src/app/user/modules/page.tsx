@@ -1,10 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
-import { motion, Variants, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, BookOpen, Calendar, ArrowRight, Loader2, Inbox, Search, X, Sparkles } from 'lucide-react'
+import { motion, AnimatePresence, Variants } from 'framer-motion'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Calendar,
+  CheckCircle2,
+  Inbox,
+  Loader2,
+  Search,
+  Sparkles,
+  X,
+  Layers3,
+  GraduationCap,
+} from 'lucide-react'
 
 interface ModuleType {
   id: string
@@ -14,99 +27,268 @@ interface ModuleType {
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.06 } }
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.07,
+    },
+  },
 }
 
 const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 24 },
+  hidden: {
+    opacity: 0,
+    y: 24,
+  },
   show: {
     opacity: 1,
     y: 0,
-    transition: { type: 'spring', stiffness: 130, damping: 16 }
+    transition: {
+      type: 'spring',
+      stiffness: 120,
+      damping: 16,
+    },
   },
-  exit: { opacity: 0, scale: 0.95, transition: { duration: 0.15 } }
+  exit: {
+    opacity: 0,
+    scale: 0.96,
+    y: 10,
+    transition: {
+      duration: 0.18,
+    },
+  },
 }
 
-// Pasangan warna gradient tiap card berputar
 const CARD_THEMES = [
-  { dot: 'bg-emerald-400', ring: 'ring-emerald-100', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: 'from-emerald-400 to-teal-400' },
-  { dot: 'bg-violet-400',  ring: 'ring-violet-100',  badge: 'bg-violet-50 text-violet-700 border-violet-200',   bar: 'from-violet-400 to-indigo-400' },
-  { dot: 'bg-amber-400',   ring: 'ring-amber-100',   badge: 'bg-amber-50 text-amber-700 border-amber-200',      bar: 'from-amber-400 to-orange-400' },
-  { dot: 'bg-sky-400',     ring: 'ring-sky-100',     badge: 'bg-sky-50 text-sky-700 border-sky-200',            bar: 'from-sky-400 to-blue-400' },
-  { dot: 'bg-rose-400',    ring: 'ring-rose-100',    badge: 'bg-rose-50 text-rose-700 border-rose-200',         bar: 'from-rose-400 to-pink-400' },
+  {
+    gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
+    soft: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    border: 'border-emerald-100',
+    glow: 'group-hover:shadow-emerald-200/60',
+  },
+  {
+    gradient: 'from-violet-500 via-purple-500 to-indigo-500',
+    soft: 'bg-violet-50',
+    text: 'text-violet-700',
+    border: 'border-violet-100',
+    glow: 'group-hover:shadow-violet-200/60',
+  },
+  {
+    gradient: 'from-amber-400 via-orange-500 to-rose-500',
+    soft: 'bg-amber-50',
+    text: 'text-amber-700',
+    border: 'border-amber-100',
+    glow: 'group-hover:shadow-amber-200/60',
+  },
+  {
+    gradient: 'from-sky-500 via-blue-500 to-indigo-500',
+    soft: 'bg-sky-50',
+    text: 'text-sky-700',
+    border: 'border-sky-100',
+    glow: 'group-hover:shadow-sky-200/60',
+  },
+  {
+    gradient: 'from-rose-500 via-pink-500 to-fuchsia-500',
+    soft: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-100',
+    glow: 'group-hover:shadow-rose-200/60',
+  },
 ]
 
 export default function ModulesListPage() {
-  const router   = useRouter()
-  const supabase = createClient()
-  const [modules, setModules]     = useState<ModuleType[]>([])
+  const router = useRouter()
+  const [modules, setModules] = useState<ModuleType[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [search, setSearch]       = useState('')
+  const [search, setSearch] = useState('')
+
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    let mounted = true
+
     const fetchModules = async () => {
-      const { data, error } = await supabase
-        .from('modules')
-        .select('id, title, created_at')
-        .order('created_at', { ascending: false })
-      if (!error && data) setModules(data)
-      setIsLoading(false)
+      setIsLoading(true)
+
+      try {
+        const { data, error } = await supabase
+          .from('modules')
+          .select('id, title, created_at')
+          .order('created_at', {
+            ascending: false,
+          })
+
+        if (error) {
+          console.error('fetchModules error:', error)
+          return
+        }
+
+        if (mounted) {
+          setModules((data || []) as ModuleType[])
+        }
+      } catch (error) {
+        console.error('fetchModules error:', error)
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+        }
+      }
     }
+
     fetchModules()
+
+    return () => {
+      mounted = false
+    }
   }, [supabase])
 
-  const filtered = modules.filter(m =>
-    m.title.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredModules = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+
+    if (!keyword) {
+      return modules
+    }
+
+    return modules.filter((module) =>
+      module.title.toLowerCase().includes(keyword)
+    )
+  }, [modules, search])
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+
+    if (Number.isNaN(date.getTime())) {
+      return '-'
+    }
+
+    return new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(date)
+  }
+
+  const handleOpenModule = (id: string) => {
+    router.push(`/user/modules/${id}`)
+  }
 
   return (
-    <div className="w-full min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-800">
+      {/* =========================================================
+          HERO
+      ========================================================== */}
+      <section className="relative overflow-hidden bg-slate-950 text-white">
+        {/* Decorative background */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-24 -top-32 h-80 w-80 rounded-full bg-emerald-500/20 blur-3xl" />
+          <div className="absolute -right-20 top-0 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl" />
+          <div className="absolute bottom-[-160px] left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-violet-500/10 blur-3xl" />
 
-      {/* ── Hero header ──────────────────────────────────────── */}
-      <div className="relative overflow-hidden bg-white border-b border-slate-100">
+          <div
+            className="absolute inset-0 opacity-[0.035]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.8) 1px, transparent 1px)',
+              backgroundSize: '40px 40px',
+            }}
+          />
+        </div>
 
-        {/* Decorative blobs */}
-        <div className="pointer-events-none absolute -top-16 -right-16 w-64 h-64 bg-emerald-100/50 rounded-full blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-10 -left-10 w-48 h-48 bg-teal-100/40 rounded-full blur-2xl" />
-
-        <div className="relative max-w-4xl mx-auto px-5 md:px-8 pt-6 pb-8 space-y-5">
-
-          {/* Back */}
-          <button
+        <div className="relative mx-auto max-w-6xl px-5 pb-10 pt-5 sm:px-6 md:px-8 md:pb-14 md:pt-7">
+          {/* Back button */}
+          <motion.button
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            type="button"
             onClick={() => router.push('/user')}
-            className="group inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700 font-medium transition-colors"
+            className="group mb-10 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-300 backdrop-blur-md transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             Dashboard
-          </button>
+          </motion.button>
 
-          {/* Title */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  <Sparkles className="w-3 h-3" />
-                  Microlearning
-                </span>
+          <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
+            {/* Hero text */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="max-w-3xl"
+            >
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                <Sparkles className="h-3.5 w-3.5" />
+                Learning Center
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-                Modul Pembelajaran
-              </h1>
-              <p className="text-sm text-slate-500 max-w-md leading-relaxed">
-                Pilih modul untuk mulai mendalami materi bahasa Inggris dan kerjakan kuis interaktif.
-              </p>
-            </div>
 
-            {/* Count badge */}
-            {!isLoading && modules.length > 0 && (
+              <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+                Modul
+                <span className="bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">
+                  {' '}
+                  Pembelajaran
+                </span>
+              </h1>
+
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                Jelajahi berbagai modul pembelajaran yang telah disiapkan
+                untuk membantu Anda memahami materi dengan lebih terstruktur
+                dan interaktif.
+              </p>
+
+              {/* Mini stats */}
+              {!isLoading && (
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
+                    <Layers3 className="h-4 w-4 text-emerald-300" />
+                    <span className="text-xs font-semibold text-slate-300">
+                      {modules.length} Modul tersedia
+                    </span>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
+                    <GraduationCap className="h-4 w-4 text-cyan-300" />
+                    <span className="text-xs font-semibold text-slate-300">
+                      Belajar sesuai kecepatan Anda
+                    </span>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Big count */}
+            {!isLoading && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
-                className="shrink-0 flex flex-col items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-200"
+                initial={{
+                  opacity: 0,
+                  scale: 0.8,
+                  rotate: -4,
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                  rotate: 0,
+                }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 120,
+                  damping: 14,
+                  delay: 0.15,
+                }}
+                className="hidden lg:block"
               >
-                <span className="text-2xl font-black leading-none">{modules.length}</span>
-                <span className="text-[10px] font-semibold opacity-80 mt-0.5">Modul</span>
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-[2rem] bg-emerald-400/20 blur-2xl" />
+
+                  <div className="relative flex h-40 w-40 flex-col items-center justify-center rounded-[2rem] border border-white/10 bg-white/[0.07] shadow-2xl backdrop-blur-xl">
+                    <span className="text-5xl font-black tracking-tight">
+                      {modules.length}
+                    </span>
+
+                    <span className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Modul
+                    </span>
+                  </div>
+                </div>
               </motion.div>
             )}
           </div>
@@ -114,159 +296,315 @@ export default function ModulesListPage() {
           {/* Search */}
           {!isLoading && modules.length > 0 && (
             <motion.div
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="relative w-full sm:w-80"
+              transition={{ delay: 0.25 }}
+              className="mt-8"
             >
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Cari modul..."
-                className="w-full pl-10 pr-9 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10 placeholder-slate-400 transition-all"
-              />
-              <AnimatePresence>
-                {search && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.7 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.7 }}
-                    onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </motion.button>
-                )}
-              </AnimatePresence>
+              <div className="relative max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Cari modul pembelajaran..."
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.08] py-3.5 pl-11 pr-11 text-sm font-medium text-white outline-none backdrop-blur-xl transition-all placeholder:text-slate-500 focus:border-emerald-400/50 focus:bg-white/[0.12] focus:ring-4 focus:ring-emerald-500/10"
+                />
+
+                <AnimatePresence>
+                  {search && (
+                    <motion.button
+                      initial={{
+                        opacity: 0,
+                        scale: 0.7,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        scale: 0.7,
+                      }}
+                      type="button"
+                      onClick={() => setSearch('')}
+                      className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* ── Content ──────────────────────────────────────────── */}
-      <div className="max-w-4xl mx-auto px-5 md:px-8 py-8 pb-24">
+      {/* =========================================================
+          CONTENT
+      ========================================================== */}
+      <main className="mx-auto max-w-6xl px-5 py-8 pb-24 sm:px-6 md:px-8 md:py-10">
+        {/* Section heading */}
+        {!isLoading && modules.length > 0 && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 10,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="mb-6 flex items-end justify-between gap-4"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-7 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" />
 
-        {/* Loading */}
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center py-32 gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+                  Koleksi Modul
+                </span>
+              </div>
+
+              <h2 className="mt-2 text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+                Mulai perjalanan belajar
+              </h2>
+
+              <p className="mt-1 text-xs font-medium text-slate-400 sm:text-sm">
+                {search
+                  ? `${filteredModules.length} modul ditemukan`
+                  : `${modules.length} modul siap dipelajari`}
+              </p>
             </div>
-            <p className="text-sm text-slate-400 font-medium">Memuat modul...</p>
-          </div>
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500 transition-all hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 sm:inline-flex"
+              >
+                Reset
+              </button>
+            )}
+          </motion.div>
         )}
 
-        {/* Empty */}
-        {!isLoading && modules.length === 0 && (
+        {/* =======================================================
+            LOADING
+        ======================================================== */}
+        {isLoading && (
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-32 gap-4 text-center"
+            initial={{
+              opacity: 0,
+              y: 15,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm sm:p-12"
           >
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
-              <Inbox className="w-7 h-7 text-slate-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-slate-700 mb-1">Belum ada modul</h4>
-              <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
-                Modul bimbingan sedang disiapkan oleh Admin.
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="relative">
+                <div className="absolute inset-0 animate-ping rounded-2xl bg-emerald-200/50" />
+
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 ring-1 ring-emerald-100">
+                  <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
+                </div>
+              </div>
+
+              <h3 className="mt-5 text-sm font-black text-slate-800">
+                Menyiapkan modul
+              </h3>
+
+              <p className="mt-1 text-xs text-slate-400">
+                Mohon tunggu sebentar...
               </p>
             </div>
           </motion.div>
         )}
 
-        {/* No results */}
-        {!isLoading && modules.length > 0 && filtered.length === 0 && (
+        {/* =======================================================
+            EMPTY
+        ======================================================== */}
+        {!isLoading && modules.length === 0 && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-24 gap-3 text-center"
+            initial={{
+              opacity: 0,
+              scale: 0.98,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+            }}
+            className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm sm:px-10 sm:py-24"
           >
-            <Search className="w-8 h-8 text-slate-300" />
-            <p className="text-sm text-slate-500">
-              Tidak ada hasil untuk <span className="font-semibold text-slate-700">&ldquo;{search}&rdquo;</span>
-            </p>
-            <button
-              onClick={() => setSearch('')}
-              className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold underline underline-offset-2"
-            >
-              Reset pencarian
-            </button>
+            <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-emerald-100/60 blur-3xl" />
+
+            <div className="relative mx-auto flex max-w-sm flex-col items-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-slate-100 to-slate-50 ring-8 ring-slate-50">
+                <Inbox className="h-8 w-8 text-slate-400" />
+              </div>
+
+              <h3 className="mt-6 text-lg font-black text-slate-800">
+                Belum ada modul
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Modul pembelajaran belum tersedia. Silakan kembali lagi nanti
+                setelah materi ditambahkan.
+              </p>
+            </div>
           </motion.div>
         )}
 
-        {/* Grid */}
-        {!isLoading && filtered.length > 0 && (
+        {/* =======================================================
+            NO SEARCH RESULT
+        ======================================================== */}
+        {!isLoading &&
+          modules.length > 0 &&
+          filteredModules.length === 0 && (
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 12,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center sm:py-20"
+            >
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+                <Search className="h-7 w-7 text-slate-400" />
+              </div>
+
+              <h3 className="mt-5 text-sm font-black text-slate-700">
+                Modul tidak ditemukan
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-slate-400">
+                Tidak ada modul yang cocok dengan pencarian{' '}
+                <span className="font-bold text-slate-600">
+                  &ldquo;{search}&rdquo;
+                </span>
+                .
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="mt-5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-200"
+              >
+                Tampilkan Semua Modul
+              </button>
+            </motion.div>
+          )}
+
+        {/* =======================================================
+            MODULE GRID
+        ======================================================== */}
+        {!isLoading && filteredModules.length > 0 && (
           <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
           >
             <AnimatePresence mode="popLayout">
-              {filtered.map((mod, idx) => {
-                const theme = CARD_THEMES[idx % CARD_THEMES.length]
-                const num   = String(idx + 1).padStart(2, '0')
+              {filteredModules.map((module, index) => {
+                const theme =
+                  CARD_THEMES[index % CARD_THEMES.length]
+
+                const moduleNumber = String(index + 1).padStart(2, '0')
+
                 return (
-                  <motion.div
-                    key={mod.id}
+                  <motion.article
+                    key={module.id}
                     variants={itemVariants}
                     layout
-                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                    className="group relative bg-white rounded-2xl border border-slate-200/80 overflow-hidden flex flex-col hover:shadow-xl hover:shadow-slate-200/60 hover:border-slate-300 transition-all duration-250"
+                    whileHover={{
+                      y: -6,
+                    }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 260,
+                      damping: 20,
+                    }}
+                    className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-shadow duration-300 ${theme.glow} hover:shadow-2xl`}
                   >
-                    {/* Top gradient bar */}
-                    <div className={`h-1 w-full bg-gradient-to-r ${theme.bar}`} />
+                    {/* Gradient top */}
+                    <div
+                      className={`h-1.5 w-full bg-gradient-to-r ${theme.gradient}`}
+                    />
 
-                    <div className="p-6 flex flex-col flex-1">
+                    {/* Glow */}
+                    <div
+                      className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${theme.gradient} opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-10`}
+                    />
 
-                      {/* Header row */}
-                      <div className="flex items-start justify-between mb-4 gap-2">
-                        {/* Module number with ring */}
-                        <div className={`w-9 h-9 rounded-xl ring-4 ${theme.ring} flex items-center justify-center shrink-0`}>
-                          <div className={`w-3 h-3 rounded-full ${theme.dot}`} />
+                    <div className="relative flex h-full flex-col p-5 sm:p-6">
+                      {/* Card header */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div
+                          className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-lg`}
+                        >
+                          <BookOpen className="h-5 w-5" />
                         </div>
 
-                        {/* Badge */}
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${theme.badge}`}>
-                          #{num}
+                        <span
+                          className={`rounded-xl border ${theme.border} ${theme.soft} px-2.5 py-1.5 text-[10px] font-black tracking-widest ${theme.text}`}
+                        >
+                          MODUL {moduleNumber}
                         </span>
                       </div>
 
-                      {/* Title */}
-                      <h3 className="font-bold text-slate-900 text-base leading-snug mb-2 group-hover:text-slate-700 transition-colors flex-1">
-                        {mod.title}
-                      </h3>
+                      {/* Content */}
+                      <div className="mt-6 flex-1">
+                        <h3 className="line-clamp-3 text-lg font-black leading-snug tracking-tight text-slate-900 transition-colors group-hover:text-slate-700">
+                          {module.title}
+                        </h3>
 
-                      {/* Date */}
-                      <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-5">
-                        <Calendar className="w-3 h-3" />
-                        <span>
-                          {new Date(mod.created_at).toLocaleDateString('id-ID', {
-                            day: 'numeric', month: 'long', year: 'numeric'
-                          })}
-                        </span>
+                        <div className="mt-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                            <Calendar className="h-3.5 w-3.5" />
+                          </div>
+
+                          <span>
+                            Ditambahkan {formatDate(module.created_at)}
+                          </span>
+                        </div>
                       </div>
 
                       {/* CTA */}
                       <button
-                        onClick={() => router.push(`/user/modules/${mod.id}`)}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-900 hover:border-slate-900 hover:text-white text-slate-700 text-sm font-semibold transition-all duration-200 group/btn"
+                        type="button"
+                        onClick={() => handleOpenModule(module.id)}
+                        className={`group/cta mt-6 flex w-full items-center justify-between rounded-2xl bg-slate-950 px-4 py-3.5 text-left text-white shadow-sm transition-all duration-300 hover:bg-gradient-to-r ${theme.gradient} hover:shadow-lg`}
                       >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        Mulai Belajar
-                        <ArrowRight className="w-3.5 h-3.5 ml-auto group-hover/btn:translate-x-0.5 transition-transform" />
+                        <span className="flex items-center gap-2.5">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
+                            <BookOpen className="h-3.5 w-3.5" />
+                          </span>
+
+                          <span className="text-xs font-black">
+                            Mulai Belajar
+                          </span>
+                        </span>
+
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 transition-transform duration-300 group-hover/cta:translate-x-1">
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </span>
                       </button>
                     </div>
-                  </motion.div>
+                  </motion.article>
                 )
               })}
             </AnimatePresence>
           </motion.div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

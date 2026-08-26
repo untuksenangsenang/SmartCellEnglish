@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar"; // 1. Import Navbar global
 import Footer from "@/components/Footer"; // 2. Import Footer global
+import PwaInstallPrompt from "@/components/PwaInstallPrompt"; // PWA Component
 
 const geistSans = Geist({
   variable: "--font-semibold-sans",
@@ -18,6 +19,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Smart Cell English — LPKA Kelas II Yogyakarta",
   description: "Platform Microlearning Bahasa Inggris interaktif untuk anak binaan LPKA Kelas II Yogyakarta oleh Tim PKM-PM Universitas Ahmad Dahlan.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Smart Cell",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1E40AF",
 };
 
 export default function RootLayout({
@@ -42,6 +53,8 @@ export default function RootLayout({
         
         {/* Footer akan selalu berada di bagian paling bawah halaman (Sticky Footer) */}
         <Footer />
+        {/* PWA Install Prompt & Service Worker Registration */}
+        <PwaInstallPrompt />
         
       </body>
     </html>

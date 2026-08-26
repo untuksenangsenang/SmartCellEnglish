@@ -5,37 +5,56 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-import { LogIn, LogOut, User } from "lucide-react";
+import { LogIn, LogOut, User, Download } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Navbar() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading } = useAuth();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    // 1. Ambil data sesi user saat komponen pertama kali dimuat
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
+    // Listener untuk event instalasi PWA
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
     };
 
-    getSession();
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
-    // 2. Pasang listener untuk mendeteksi perubahan status login/logout secara real-time
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
 
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      console.log("PWA diinstal");
+    }
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        alert("Anda sedang offline. Pastikan koneksi internet aktif untuk keluar.");
+        return; // Jangan lanjutkan logout jika offline
+      }
+
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Kesalahan saat logout:", error);
+      alert("Gagal melakukan logout akibat gangguan jaringan.");
+    }
   };
 
   return (
@@ -53,7 +72,7 @@ export default function Navbar() {
             priority
           />
         </div>
-        <span className="font-extrabold text-sm md:text-lg text-emerald-600 tracking-wide uppercase md:normal-case">
+        <span className="font-extrabold text-sm md:text-lg text-blue-700 tracking-wide uppercase md:normal-case">
           Smart Cell English
         </span>
       </Link>
@@ -75,11 +94,22 @@ export default function Navbar() {
               <LogOut className="w-3.5 h-3.5" />
               Keluar
             </button>
+            
+            {/* Tombol Install Aplikasi PWA */}
+            {isInstallable && (
+              <button
+                onClick={handleInstallApp}
+                className="hidden md:flex items-center gap-1.5 rounded-full bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-bold text-white transition-all shrink-0 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Install App
+              </button>
+            )}
           </div>
         ) : (
           <Link
             href="/login"
-            className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-1.5 md:px-4 md:py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition-all shrink-0"
+            className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3.5 py-1.5 md:px-4 md:py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition-all shrink-0"
           >
             <LogIn className="w-3.5 h-3.5" />
             Masuk
