@@ -9,7 +9,6 @@ import {
   ArrowRight,
   BookOpen,
   Calendar,
-  CheckCircle2,
   Inbox,
   Loader2,
   Search,
@@ -23,6 +22,7 @@ interface ModuleType {
   id: string
   title: string
   created_at: string
+  subject: string | null
 }
 
 const containerVariants: Variants = {
@@ -30,7 +30,7 @@ const containerVariants: Variants = {
   show: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.07,
+      staggerChildren: 0.06,
     },
   },
 }
@@ -66,6 +66,7 @@ const CARD_THEMES = [
     text: 'text-emerald-700',
     border: 'border-emerald-100',
     glow: 'group-hover:shadow-emerald-200/60',
+    dot: 'bg-emerald-500',
   },
   {
     gradient: 'from-violet-500 via-purple-500 to-indigo-500',
@@ -73,6 +74,7 @@ const CARD_THEMES = [
     text: 'text-violet-700',
     border: 'border-violet-100',
     glow: 'group-hover:shadow-violet-200/60',
+    dot: 'bg-violet-500',
   },
   {
     gradient: 'from-amber-400 via-orange-500 to-rose-500',
@@ -80,6 +82,7 @@ const CARD_THEMES = [
     text: 'text-amber-700',
     border: 'border-amber-100',
     glow: 'group-hover:shadow-amber-200/60',
+    dot: 'bg-amber-500',
   },
   {
     gradient: 'from-sky-500 via-blue-500 to-indigo-500',
@@ -87,6 +90,7 @@ const CARD_THEMES = [
     text: 'text-sky-700',
     border: 'border-sky-100',
     glow: 'group-hover:shadow-sky-200/60',
+    dot: 'bg-sky-500',
   },
   {
     gradient: 'from-rose-500 via-pink-500 to-fuchsia-500',
@@ -94,14 +98,18 @@ const CARD_THEMES = [
     text: 'text-rose-700',
     border: 'border-rose-100',
     glow: 'group-hover:shadow-rose-200/60',
+    dot: 'bg-rose-500',
   },
 ]
+
+const UNCATEGORIZED_LABEL = 'Lainnya'
 
 export default function ModulesListPage() {
   const router = useRouter()
   const [modules, setModules] = useState<ModuleType[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -114,10 +122,9 @@ export default function ModulesListPage() {
       try {
         const { data, error } = await supabase
           .from('modules')
-          .select('id, title, created_at')
-          .order('created_at', {
-            ascending: false,
-          })
+          .select('id, title, created_at, subject')
+          .order('subject', { ascending: true })
+          .order('created_at', { ascending: false })
 
         if (error) {
           console.error('fetchModules error:', error)
@@ -143,17 +150,89 @@ export default function ModulesListPage() {
     }
   }, [supabase])
 
-  const filteredModules = useMemo(() => {
+  // Daftar mata pelajaran unik, urut alfabet, dengan "Lainnya" untuk yang kosong
+  const subjectList = useMemo(() => {
+    const set = new Set<string>()
+
+    modules.forEach((module) => {
+      set.add(module.subject?.trim() || UNCATEGORIZED_LABEL)
+    })
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'))
+  }, [modules])
+
+  // Ringkasan tiap mata pelajaran: jumlah modul & tanggal terbaru
+  const subjectSummaries = useMemo(() => {
+    const map = new Map<string, { count: number; latest: string }>()
+
+    modules.forEach((module) => {
+      const label = module.subject?.trim() || UNCATEGORIZED_LABEL
+      const existing = map.get(label)
+
+      if (!existing) {
+        map.set(label, { count: 1, latest: module.created_at })
+      } else {
+        existing.count += 1
+        if (
+          new Date(module.created_at).getTime() >
+          new Date(existing.latest).getTime()
+        ) {
+          existing.latest = module.created_at
+        }
+      }
+    })
+
+    return subjectList.map((subject, index) => ({
+      subject,
+      count: map.get(subject)?.count ?? 0,
+      latest: map.get(subject)?.latest ?? null,
+      theme: CARD_THEMES[index % CARD_THEMES.length],
+    }))
+  }, [modules, subjectList])
+
+  // Mata pelajaran terfilter oleh kata kunci pencarian (tampilan awal)
+  const filteredSubjectSummaries = useMemo(() => {
     const keyword = search.trim().toLowerCase()
 
     if (!keyword) {
-      return modules
+      return subjectSummaries
     }
 
-    return modules.filter((module) =>
-      module.title.toLowerCase().includes(keyword)
+    return subjectSummaries.filter((item) =>
+      item.subject.toLowerCase().includes(keyword)
     )
-  }, [modules, search])
+  }, [subjectSummaries, search])
+
+  // Modul dalam mata pelajaran yang sedang dibuka, terfilter oleh pencarian
+  const modulesInSelectedSubject = useMemo(() => {
+    if (!selectedSubject) {
+      return []
+    }
+
+    const keyword = search.trim().toLowerCase()
+
+    return modules.filter((module) => {
+      const label = module.subject?.trim() || UNCATEGORIZED_LABEL
+
+      if (label !== selectedSubject) {
+        return false
+      }
+
+      return !keyword || module.title.toLowerCase().includes(keyword)
+    })
+  }, [modules, selectedSubject, search])
+
+  const selectedSubjectTheme = useMemo(() => {
+    const index = subjectList.indexOf(selectedSubject || '')
+    return CARD_THEMES[(index >= 0 ? index : 0) % CARD_THEMES.length]
+  }, [subjectList, selectedSubject])
+
+  const selectedSubjectTotal = useMemo(() => {
+    return (
+      subjectSummaries.find((item) => item.subject === selectedSubject)
+        ?.count ?? 0
+    )
+  }, [subjectSummaries, selectedSubject])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -171,6 +250,16 @@ export default function ModulesListPage() {
 
   const handleOpenModule = (id: string) => {
     router.push(`/user/modules/${id}`)
+  }
+
+  const handleSelectSubject = (subject: string) => {
+    setSearch('')
+    setSelectedSubject(subject)
+  }
+
+  const handleBackToSubjects = () => {
+    setSearch('')
+    setSelectedSubject(null)
   }
 
   return (
@@ -201,59 +290,82 @@ export default function ModulesListPage() {
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             type="button"
-            onClick={() => router.push('/user')}
+            onClick={() =>
+              selectedSubject ? handleBackToSubjects() : router.push('/user')
+            }
             className="group mb-10 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-300 backdrop-blur-md transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-            Dashboard
+            {selectedSubject ? 'Mata Pelajaran' : 'Dashboard'}
           </motion.button>
 
           <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
             {/* Hero text */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="max-w-3xl"
-            >
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300">
-                <Sparkles className="h-3.5 w-3.5" />
-                Learning Center
-              </div>
-
-              <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
-                Modul
-                <span className="bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">
-                  {' '}
-                  Pembelajaran
-                </span>
-              </h1>
-
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-                Jelajahi berbagai modul pembelajaran yang telah disiapkan
-                untuk membantu Anda memahami materi dengan lebih terstruktur
-                dan interaktif.
-              </p>
-
-              {/* Mini stats */}
-              {!isLoading && (
-                <div className="mt-7 flex flex-wrap gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
-                    <Layers3 className="h-4 w-4 text-emerald-300" />
-                    <span className="text-xs font-semibold text-slate-300">
-                      {modules.length} Modul tersedia
-                    </span>
-                  </div>
-
-                  <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
-                    <GraduationCap className="h-4 w-4 text-cyan-300" />
-                    <span className="text-xs font-semibold text-slate-300">
-                      Belajar sesuai kecepatan Anda
-                    </span>
-                  </div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={selectedSubject ?? 'subjects'}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.4 }}
+                className="max-w-3xl"
+              >
+                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {selectedSubject ? 'Mata Pelajaran' : 'Learning Center'}
                 </div>
-              )}
-            </motion.div>
+
+                {selectedSubject ? (
+                  <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+                    {selectedSubject}
+                  </h1>
+                ) : (
+                  <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+                    Modul
+                    <span className="bg-gradient-to-r from-emerald-300 via-teal-300 to-cyan-300 bg-clip-text text-transparent">
+                      {' '}
+                      Pembelajaran
+                    </span>
+                  </h1>
+                )}
+
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                  {selectedSubject
+                    ? `Semua modul pembelajaran untuk mata pelajaran ${selectedSubject}, siap membantu Anda belajar lebih fokus.`
+                    : 'Pilih mata pelajaran terlebih dahulu, lalu jelajahi modul-modul di dalamnya agar belajar Anda lebih terstruktur dan fokus.'}
+                </p>
+
+                {/* Mini stats */}
+                {!isLoading && (
+                  <div className="mt-7 flex flex-wrap gap-3">
+                    {selectedSubject ? (
+                      <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
+                        <BookOpen className="h-4 w-4 text-emerald-300" />
+                        <span className="text-xs font-semibold text-slate-300">
+                          {selectedSubjectTotal} Modul tersedia
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
+                          <Layers3 className="h-4 w-4 text-emerald-300" />
+                          <span className="text-xs font-semibold text-slate-300">
+                            {modules.length} Modul tersedia
+                          </span>
+                        </div>
+
+                        <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur-md">
+                          <GraduationCap className="h-4 w-4 text-cyan-300" />
+                          <span className="text-xs font-semibold text-slate-300">
+                            {subjectList.length} Mata pelajaran
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
 
             {/* Big count */}
             {!isLoading && (
@@ -281,7 +393,7 @@ export default function ModulesListPage() {
 
                   <div className="relative flex h-40 w-40 flex-col items-center justify-center rounded-[2rem] border border-white/10 bg-white/[0.07] shadow-2xl backdrop-blur-xl">
                     <span className="text-5xl font-black tracking-tight">
-                      {modules.length}
+                      {selectedSubject ? selectedSubjectTotal : modules.length}
                     </span>
 
                     <span className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
@@ -308,7 +420,11 @@ export default function ModulesListPage() {
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Cari modul pembelajaran..."
+                  placeholder={
+                    selectedSubject
+                      ? `Cari modul dalam ${selectedSubject}...`
+                      : 'Cari mata pelajaran...'
+                  }
                   className="w-full rounded-2xl border border-white/10 bg-white/[0.08] py-3.5 pl-11 pr-11 text-sm font-medium text-white outline-none backdrop-blur-xl transition-all placeholder:text-slate-500 focus:border-emerald-400/50 focus:bg-white/[0.12] focus:ring-4 focus:ring-emerald-500/10"
                 />
 
@@ -363,18 +479,24 @@ export default function ModulesListPage() {
                 <div className="h-1.5 w-7 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" />
 
                 <span className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
-                  Koleksi Modul
+                  {selectedSubject ? 'Koleksi Modul' : 'Mata Pelajaran'}
                 </span>
               </div>
 
               <h2 className="mt-2 text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
-                Mulai perjalanan belajar
+                {selectedSubject
+                  ? `Modul dalam ${selectedSubject}`
+                  : 'Pilih mata pelajaran'}
               </h2>
 
               <p className="mt-1 text-xs font-medium text-slate-400 sm:text-sm">
-                {search
-                  ? `${filteredModules.length} modul ditemukan`
-                  : `${modules.length} modul siap dipelajari`}
+                {selectedSubject
+                  ? search
+                    ? `${modulesInSelectedSubject.length} modul ditemukan`
+                    : `${selectedSubjectTotal} modul siap dipelajari`
+                  : search
+                    ? `${filteredSubjectSummaries.length} mata pelajaran ditemukan`
+                    : `${subjectList.length} mata pelajaran tersedia`}
               </p>
             </div>
 
@@ -426,7 +548,7 @@ export default function ModulesListPage() {
         )}
 
         {/* =======================================================
-            EMPTY
+            EMPTY (belum ada modul sama sekali)
         ======================================================== */}
         {!isLoading && modules.length === 0 && (
           <motion.div
@@ -460,149 +582,263 @@ export default function ModulesListPage() {
         )}
 
         {/* =======================================================
-            NO SEARCH RESULT
+            TAMPILAN MATA PELAJARAN (langkah pertama)
         ======================================================== */}
-        {!isLoading &&
-          modules.length > 0 &&
-          filteredModules.length === 0 && (
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 12,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center sm:py-20"
-            >
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
-                <Search className="h-7 w-7 text-slate-400" />
-              </div>
-
-              <h3 className="mt-5 text-sm font-black text-slate-700">
-                Modul tidak ditemukan
-              </h3>
-
-              <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-slate-400">
-                Tidak ada modul yang cocok dengan pencarian{' '}
-                <span className="font-bold text-slate-600">
-                  &ldquo;{search}&rdquo;
-                </span>
-                .
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="mt-5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-200"
+        {!isLoading && modules.length > 0 && !selectedSubject && (
+          <>
+            {filteredSubjectSummaries.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center sm:py-20"
               >
-                Tampilkan Semua Modul
-              </button>
-            </motion.div>
-          )}
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+                  <Search className="h-7 w-7 text-slate-400" />
+                </div>
 
-        {/* =======================================================
-            MODULE GRID
-        ======================================================== */}
-        {!isLoading && filteredModules.length > 0 && (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredModules.map((module, index) => {
-                const theme =
-                  CARD_THEMES[index % CARD_THEMES.length]
+                <h3 className="mt-5 text-sm font-black text-slate-700">
+                  Mata pelajaran tidak ditemukan
+                </h3>
 
-                const moduleNumber = String(index + 1).padStart(2, '0')
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-slate-400">
+                  Tidak ada mata pelajaran yang cocok dengan pencarian{' '}
+                  <span className="font-bold text-slate-600">
+                    &ldquo;{search}&rdquo;
+                  </span>
+                  .
+                </p>
 
-                return (
-                  <motion.article
-                    key={module.id}
-                    variants={itemVariants}
-                    layout
-                    whileHover={{
-                      y: -6,
-                    }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 260,
-                      damping: 20,
-                    }}
-                    className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-shadow duration-300 ${theme.glow} hover:shadow-2xl`}
-                  >
-                    {/* Gradient top */}
-                    <div
-                      className={`h-1.5 w-full bg-gradient-to-r ${theme.gradient}`}
-                    />
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="mt-5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-200"
+                >
+                  Tampilkan Semua Mata Pelajaran
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="show"
+                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              >
+                <AnimatePresence mode="popLayout">
+                  {filteredSubjectSummaries.map((item) => (
+                    <motion.article
+                      key={item.subject}
+                      variants={itemVariants}
+                      layout
+                      whileHover={{ y: -6 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 260,
+                        damping: 20,
+                      }}
+                      className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-shadow duration-300 ${item.theme.glow} hover:shadow-2xl`}
+                    >
+                      {/* Gradient top */}
+                      <div
+                        className={`h-1.5 w-full bg-gradient-to-r ${item.theme.gradient}`}
+                      />
 
-                    {/* Glow */}
-                    <div
-                      className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${theme.gradient} opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-10`}
-                    />
+                      {/* Glow */}
+                      <div
+                        className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${item.theme.gradient} opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-10`}
+                      />
 
-                    <div className="relative flex h-full flex-col p-5 sm:p-6">
-                      {/* Card header */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div
-                          className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-lg`}
-                        >
-                          <BookOpen className="h-5 w-5" />
-                        </div>
-
-                        <span
-                          className={`rounded-xl border ${theme.border} ${theme.soft} px-2.5 py-1.5 text-[10px] font-black tracking-widest ${theme.text}`}
-                        >
-                          MODUL {moduleNumber}
-                        </span>
-                      </div>
-
-                      {/* Content */}
-                      <div className="mt-6 flex-1">
-                        <h3 className="line-clamp-3 text-lg font-black leading-snug tracking-tight text-slate-900 transition-colors group-hover:text-slate-700">
-                          {module.title}
-                        </h3>
-
-                        <div className="mt-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
-                            <Calendar className="h-3.5 w-3.5" />
+                      <div className="relative flex h-full flex-col p-5 sm:p-6">
+                        {/* Card header */}
+                        <div className="flex items-start justify-between gap-4">
+                          <div
+                            className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${item.theme.gradient} text-white shadow-lg`}
+                          >
+                            <GraduationCap className="h-5 w-5" />
                           </div>
 
-                          <span>
-                            Ditambahkan {formatDate(module.created_at)}
+                          <span
+                            className={`rounded-xl border ${item.theme.border} ${item.theme.soft} px-2.5 py-1.5 text-[10px] font-black tracking-widest ${item.theme.text}`}
+                          >
+                            {item.count} MODUL
                           </span>
                         </div>
+
+                        {/* Content */}
+                        <div className="mt-6 flex-1">
+                          <h3 className="line-clamp-3 text-lg font-black leading-snug tracking-tight text-slate-900 transition-colors group-hover:text-slate-700">
+                            {item.subject}
+                          </h3>
+
+                          {item.latest && (
+                            <div className="mt-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
+                              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                                <Calendar className="h-3.5 w-3.5" />
+                              </div>
+
+                              <span>Terbaru {formatDate(item.latest)}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CTA */}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSubject(item.subject)}
+                          className={`group/cta mt-6 flex w-full items-center justify-between rounded-2xl bg-slate-950 px-4 py-3.5 text-left text-white shadow-sm transition-all duration-300 hover:bg-gradient-to-r ${item.theme.gradient} hover:shadow-lg`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
+                              <Layers3 className="h-3.5 w-3.5" />
+                            </span>
+
+                            <span className="text-xs font-black">
+                              Lihat Modul
+                            </span>
+                          </span>
+
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 transition-transform duration-300 group-hover/cta:translate-x-1">
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </span>
+                        </button>
                       </div>
+                    </motion.article>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </>
+        )}
 
-                      {/* CTA */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenModule(module.id)}
-                        className={`group/cta mt-6 flex w-full items-center justify-between rounded-2xl bg-slate-950 px-4 py-3.5 text-left text-white shadow-sm transition-all duration-300 hover:bg-gradient-to-r ${theme.gradient} hover:shadow-lg`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
-                            <BookOpen className="h-3.5 w-3.5" />
+        {/* =======================================================
+            TAMPILAN MODUL (setelah mata pelajaran dipilih)
+        ======================================================== */}
+        {!isLoading && modules.length > 0 && selectedSubject && (
+          <>
+            {modulesInSelectedSubject.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center sm:py-20"
+              >
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+                  <Search className="h-7 w-7 text-slate-400" />
+                </div>
+
+                <h3 className="mt-5 text-sm font-black text-slate-700">
+                  Modul tidak ditemukan
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-slate-400">
+                  Tidak ada modul yang cocok dengan pencarian{' '}
+                  <span className="font-bold text-slate-600">
+                    &ldquo;{search}&rdquo;
+                  </span>{' '}
+                  pada mata pelajaran{' '}
+                  <span className="font-bold text-slate-600">
+                    {selectedSubject}
+                  </span>
+                  .
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="mt-5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-200"
+                >
+                  Tampilkan Semua Modul
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="show"
+                className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              >
+                <AnimatePresence mode="popLayout">
+                  {modulesInSelectedSubject.map((module) => (
+                    <motion.article
+                      key={module.id}
+                      variants={itemVariants}
+                      layout
+                      whileHover={{ y: -6 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 260,
+                        damping: 20,
+                      }}
+                      className={`group relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-shadow duration-300 ${selectedSubjectTheme.glow} hover:shadow-2xl`}
+                    >
+                      {/* Gradient top */}
+                      <div
+                        className={`h-1.5 w-full bg-gradient-to-r ${selectedSubjectTheme.gradient}`}
+                      />
+
+                      {/* Glow */}
+                      <div
+                        className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${selectedSubjectTheme.gradient} opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-10`}
+                      />
+
+                      <div className="relative flex h-full flex-col p-5 sm:p-6">
+                        {/* Card header */}
+                        <div className="flex items-start justify-between gap-4">
+                          <div
+                            className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${selectedSubjectTheme.gradient} text-white shadow-lg`}
+                          >
+                            <BookOpen className="h-5 w-5" />
+                          </div>
+
+                          <span
+                            className={`rounded-xl border ${selectedSubjectTheme.border} ${selectedSubjectTheme.soft} px-2.5 py-1.5 text-[10px] font-black tracking-widest ${selectedSubjectTheme.text}`}
+                          >
+                            {selectedSubject.toUpperCase()}
+                          </span>
+                        </div>
+
+                        {/* Content */}
+                        <div className="mt-6 flex-1">
+                          <h3 className="line-clamp-3 text-lg font-black leading-snug tracking-tight text-slate-900 transition-colors group-hover:text-slate-700">
+                            {module.title}
+                          </h3>
+
+                          <div className="mt-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                              <Calendar className="h-3.5 w-3.5" />
+                            </div>
+
+                            <span>
+                              Ditambahkan {formatDate(module.created_at)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* CTA */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenModule(module.id)}
+                          className={`group/cta mt-6 flex w-full items-center justify-between rounded-2xl bg-slate-950 px-4 py-3.5 text-left text-white shadow-sm transition-all duration-300 hover:bg-gradient-to-r ${selectedSubjectTheme.gradient} hover:shadow-lg`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10">
+                              <BookOpen className="h-3.5 w-3.5" />
+                            </span>
+
+                            <span className="text-xs font-black">
+                              Mulai Belajar
+                            </span>
                           </span>
 
-                          <span className="text-xs font-black">
-                            Mulai Belajar
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 transition-transform duration-300 group-hover/cta:translate-x-1">
+                            <ArrowRight className="h-3.5 w-3.5" />
                           </span>
-                        </span>
-
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 transition-transform duration-300 group-hover/cta:translate-x-1">
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </span>
-                      </button>
-                    </div>
-                  </motion.article>
-                )
-              })}
-            </AnimatePresence>
-          </motion.div>
+                        </button>
+                      </div>
+                    </motion.article>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </>
         )}
       </main>
     </div>

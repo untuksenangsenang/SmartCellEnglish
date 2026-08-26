@@ -55,7 +55,7 @@ export default function LoginPage() {
   const isSuccess = loginState === 'success'
 
   return (
-    <div className="flex flex-1 min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-16 selection:bg-emerald-500 selection:text-white">
+    <div className="flex flex-1 min-h-[calc(100vh-4rem)] items-center justify-center bg-blue-50/40 px-4 py-16">
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}
@@ -67,13 +67,13 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
 
           {/* Top accent bar */}
-          <div className="h-1 w-full bg-gradient-to-r from-emerald-500 to-teal-400" />
+          <div className="h-1 w-full bg-gradient-to-r from-blue-800 to-blue-400" />
 
           <div className="px-8 py-10">
 
             {/* ── Branding ─────────────────────────────────── */}
             <div className="flex flex-col items-center text-center mb-8">
-              <div className="w-14 h-14 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-center mb-4">
+              <div className="w-14 h-14 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mb-4">
                 <Image
                   src="/logo.png"
                   alt="Smart Cell English"
@@ -85,7 +85,7 @@ export default function LoginPage() {
               </div>
 
               {/* Badge */}
-              <span className="inline-block px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold tracking-wide rounded-full mb-3">
+              <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold tracking-wide rounded-full mb-3">
                 Portal Belajar
               </span>
 
@@ -132,11 +132,11 @@ export default function LoginPage() {
                 <div className={`
                   relative flex items-center rounded-xl border bg-white transition-all duration-150
                   ${focusedField === 'email'
-                    ? 'border-emerald-400 ring-2 ring-emerald-500/10'
+                    ? 'border-blue-400 ring-2 ring-blue-500/10'
                     : 'border-slate-200 hover:border-slate-300'}
                 `}>
                   <Mail className={`absolute left-3.5 w-4 h-4 pointer-events-none transition-colors ${
-                    focusedField === 'email' ? 'text-emerald-500' : 'text-slate-400'
+                    focusedField === 'email' ? 'text-blue-500' : 'text-slate-400'
                   }`} />
                   <input
                     type="email"
@@ -160,11 +160,11 @@ export default function LoginPage() {
                 <div className={`
                   relative flex items-center rounded-xl border bg-white transition-all duration-150
                   ${focusedField === 'password'
-                    ? 'border-emerald-400 ring-2 ring-emerald-500/10'
+                    ? 'border-blue-400 ring-2 ring-blue-500/10'
                     : 'border-slate-200 hover:border-slate-300'}
                 `}>
                   <Lock className={`absolute left-3.5 w-4 h-4 pointer-events-none transition-colors ${
-                    focusedField === 'password' ? 'text-emerald-500' : 'text-slate-400'
+                    focusedField === 'password' ? 'text-blue-500' : 'text-slate-400'
                   }`} />
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -198,10 +198,10 @@ export default function LoginPage() {
                   rounded-xl font-semibold text-sm text-white
                   transition-all duration-200 mt-2
                   ${isSuccess
-                    ? 'bg-emerald-500 cursor-default'
+                    ? 'bg-blue-500 cursor-default'
                     : isLoading
-                      ? 'bg-emerald-600 cursor-not-allowed opacity-80'
-                      : 'bg-emerald-600 hover:bg-emerald-700 hover:-translate-y-px active:translate-y-0 shadow-sm hover:shadow-emerald-200'}
+                      ? 'bg-blue-700 cursor-not-allowed opacity-80'
+                      : 'bg-blue-700 hover:bg-blue-800 hover:-translate-y-px active:translate-y-0 shadow-sm hover:shadow-blue-200'}
                 `}
               >
                 <AnimatePresence mode="wait">
@@ -244,7 +244,7 @@ export default function LoginPage() {
             {/* ── Footer note ───────────────────────────────── */}
             <p className="text-center text-xs text-slate-400 mt-6 leading-relaxed">
               Belum punya akun?{' '}
-              <span className="text-emerald-600 font-medium">Hubungi Administrator</span>
+              <span className="text-blue-600 font-medium">Hubungi Administrator</span>
               {' '}untuk pendaftaran.
             </p>
 

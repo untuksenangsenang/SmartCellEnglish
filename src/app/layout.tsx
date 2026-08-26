@@ -20,6 +20,15 @@ export const metadata: Metadata = {
   title: "Smart Cell English — LPKA Kelas II Yogyakarta",
   description: "Platform Microlearning Bahasa Inggris interaktif untuk anak binaan LPKA Kelas II Yogyakarta oleh Tim PKM-PM Universitas Ahmad Dahlan.",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/logo.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/logo.png", type: "image/png" },
+    ],
+    shortcut: "/logo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

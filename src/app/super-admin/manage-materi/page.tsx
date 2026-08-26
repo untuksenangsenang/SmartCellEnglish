@@ -21,7 +21,8 @@ import {
   ListFilter,
   GraduationCap,
   ClipboardCheck,
-  Clock
+  Clock,
+  X
 } from 'lucide-react'
 
 // ============================================================
@@ -55,8 +56,8 @@ interface ModuleData {
   audio_url: string | null
   file_url: string | null
   file_type: string | null
-  subject_id: string | null
-  subjects?: { name: string } | null
+  subject: string | null
+  subject_id?: string | null
 }
 
 // ============================================================
@@ -79,6 +80,7 @@ export default function ManageMateriPage() {
   const [isFetchingSubjects, setIsFetchingSubjects] = useState(true)
 
   // ── Filter List ────────────────────────────────────────────
+  // modules.subject adalah sumber utama mata pelajaran pada CMS.
   const [filterSubjectId, setFilterSubjectId] = useState<string>('')
 
   // ── Ringkasan Koreksi ──────────────────────────────────────
@@ -101,7 +103,21 @@ export default function ManageMateriPage() {
   const [fileDoc, setFileDoc] = useState<File | null>(null)
   const [existingFileUrl, setExistingFileUrl] = useState<string | null>(null)
   const [existingFileType, setExistingFileType] = useState<string | null>(null)
+  // selectedSubjectId tetap dipakai untuk relasi quiz.subject_id (legacy/relasional).
+  // Untuk tabel modules, yang disimpan hanya selectedSubjectName -> modules.subject.
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('')
+  const [selectedSubjectName, setSelectedSubjectName] = useState<string>('')
+
+  // ── State Manajemen Mata Pelajaran ─────────────────────────
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false)
+  const [subjectModalMode, setSubjectModalMode] = useState<'add' | 'manage'>('add')
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null)
+  const [subjectName, setSubjectName] = useState('')
+  const [isSubjectLoading, setIsSubjectLoading] = useState(false)
+  const [subjectStatus, setSubjectStatus] = useState<{
+    success?: boolean
+    msg?: string
+  }>({})
 
   // ── Form: Data Kuis ────────────────────────────────────────
   const [quizTitle, setQuizTitle] = useState('')
@@ -149,6 +165,276 @@ export default function ManageMateriPage() {
       setIsFetchingSubjects(false)
     }
   }, [supabase])
+
+  // ============================================================
+  // [REALTIME] SINKRONISASI MATA PELAJARAN
+  // ============================================================
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('subjects-management')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'subjects'
+        },
+        () => {
+          fetchSubjects()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, fetchSubjects])
+
+  // ============================================================
+  // [CRUD] MANAJEMEN MATA PELAJARAN
+  // ============================================================
+
+  const openAddSubjectModal = () => {
+    setSubjectModalMode('add')
+    setEditingSubjectId(null)
+    setSubjectName('')
+    setSubjectStatus({})
+    setIsSubjectModalOpen(true)
+  }
+
+  const openManageSubjectModal = () => {
+    setSubjectModalMode('manage')
+    setEditingSubjectId(null)
+    setSubjectName('')
+    setSubjectStatus({})
+    setIsSubjectModalOpen(true)
+  }
+
+  const closeSubjectModal = () => {
+    if (isSubjectLoading) return
+    setIsSubjectModalOpen(false)
+    setEditingSubjectId(null)
+    setSubjectName('')
+    setSubjectStatus({})
+    setSubjectModalMode('add')
+  }
+
+  const handleSaveSubject = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const trimmedName = subjectName.trim()
+
+    if (!trimmedName) {
+      setSubjectStatus({
+        success: false,
+        msg: 'Nama mata pelajaran wajib diisi.'
+      })
+      return
+    }
+
+    if (trimmedName.length < 2) {
+      setSubjectStatus({
+        success: false,
+        msg: 'Nama mata pelajaran minimal 2 karakter.'
+      })
+      return
+    }
+
+    setIsSubjectLoading(true)
+    setSubjectStatus({})
+
+    try {
+      // Cegah duplikat tanpa bergantung hanya pada case-sensitive UNIQUE.
+      const { data: duplicateData, error: duplicateError } = await supabase
+        .from('subjects')
+        .select('id, name')
+        .ilike('name', trimmedName)
+
+      if (duplicateError) throw duplicateError
+
+      const duplicate = (duplicateData || []).find(
+        (subject) =>
+          subject.id !== editingSubjectId &&
+          subject.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      )
+
+      if (duplicate) {
+        throw new Error(
+          `Mata pelajaran "${duplicate.name}" sudah tersedia. Gunakan nama lain.`
+        )
+      }
+
+      if (editingSubjectId) {
+        const currentSubject = subjectsList.find(
+          (subject) => subject.id === editingSubjectId
+        )
+        const oldSubjectName = currentSubject?.name?.trim() || ''
+
+        const { error } = await supabase
+          .from('subjects')
+          .update({ name: trimmedName })
+          .eq('id', editingSubjectId)
+
+        if (error) throw error
+
+        // Sinkronkan juga semua modules yang menyimpan nama mapel di kolom `subject`.
+        // Ini penting karena modules tidak lagi bergantung pada modules.subject_id.
+        if (oldSubjectName && oldSubjectName !== trimmedName) {
+          const { error: moduleSyncError } = await supabase
+            .from('modules')
+            .update({ subject: trimmedName })
+            .eq('subject', oldSubjectName)
+
+          if (moduleSyncError) {
+            // Rollback nama subject jika sinkronisasi modul gagal.
+            await supabase
+              .from('subjects')
+              .update({ name: oldSubjectName })
+              .eq('id', editingSubjectId)
+            throw moduleSyncError
+          }
+
+          if (selectedSubjectName.trim().toLowerCase() === oldSubjectName.toLowerCase()) {
+            setSelectedSubjectName(trimmedName)
+          }
+        }
+
+        setSubjectStatus({
+          success: true,
+          msg: 'Mata pelajaran dan modul terkait berhasil disinkronkan.'
+        })
+      } else {
+        const { data: insertedSubject, error } = await supabase
+          .from('subjects')
+          .insert({ name: trimmedName })
+          .select('id, name')
+          .single()
+
+        if (error) throw error
+
+        if (insertedSubject) {
+          setSelectedSubjectId(insertedSubject.id)
+          setSelectedSubjectName(insertedSubject.name)
+        }
+
+        setSubjectStatus({
+          success: true,
+          msg: 'Mata pelajaran berhasil ditambahkan dan siap dipakai untuk modul.'
+        })
+      }
+
+      await fetchSubjects()
+      setSubjectName('')
+      setEditingSubjectId(null)
+      setSubjectModalMode('manage')
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyimpan mata pelajaran.'
+
+      console.error('handleSaveSubject error:', err)
+
+      setSubjectStatus({
+        success: false,
+        msg
+      })
+    } finally {
+      setIsSubjectLoading(false)
+    }
+  }
+
+  const handleEditSubject = (subject: SubjectData) => {
+    setSubjectModalMode('add')
+    setEditingSubjectId(subject.id)
+    setSubjectName(subject.name)
+    setSubjectStatus({})
+  }
+
+  const handleDeleteSubject = async (subject: SubjectData) => {
+    if (isSubjectLoading) return
+
+    const confirmed = confirm(
+      `Hapus mata pelajaran "${subject.name}"?\n\nMata pelajaran yang masih digunakan oleh modul tidak dapat dihapus agar relasi database tetap aman.`
+    )
+
+    if (!confirmed) return
+
+    setIsSubjectLoading(true)
+    setSubjectStatus({})
+
+    try {
+      // modules menggunakan kolom TEXT `subject` sebagai sumber utama.
+      const {
+        count: moduleCount,
+        error: moduleCheckError
+      } = await supabase
+        .from('modules')
+        .select('id', { count: 'exact', head: true })
+        .eq('subject', subject.name)
+
+      if (moduleCheckError) throw moduleCheckError
+
+      if ((moduleCount || 0) > 0) {
+        throw new Error(
+          `Mata pelajaran "${subject.name}" masih digunakan oleh ${moduleCount} modul. Ubah modul terkait terlebih dahulu.`
+        )
+      }
+
+      // Cek juga quiz yang mungkin masih memakai subject_id.
+      const {
+        count: quizCount,
+        error: quizCheckError
+      } = await supabase
+        .from('quizzes')
+        .select('id', { count: 'exact', head: true })
+        .eq('subject_id', subject.id)
+
+      if (quizCheckError) throw quizCheckError
+
+      if ((quizCount || 0) > 0) {
+        throw new Error(
+          `Mata pelajaran "${subject.name}" masih digunakan oleh ${quizCount} paket kuis. Ubah atau hapus kuis terkait terlebih dahulu.`
+        )
+      }
+
+      const { error: deleteError } = await supabase
+        .from('subjects')
+        .delete()
+        .eq('id', subject.id)
+
+      if (deleteError) throw deleteError
+
+      if (selectedSubjectId === subject.id) {
+        setSelectedSubjectId('')
+      }
+      if (selectedSubjectName.trim().toLowerCase() === subject.name.trim().toLowerCase()) {
+        setSelectedSubjectName('')
+      }
+
+      await fetchSubjects()
+
+      setSubjectStatus({
+        success: true,
+        msg: `Mata pelajaran "${subject.name}" berhasil dihapus.`
+      })
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Gagal menghapus mata pelajaran.'
+
+      console.error('handleDeleteSubject error:', err)
+
+      setSubjectStatus({
+        success: false,
+        msg
+      })
+    } finally {
+      setIsSubjectLoading(false)
+    }
+  }
 
   // ============================================================
   // [READ] FETCH RINGKASAN KOREKSI
@@ -348,7 +634,7 @@ export default function ManageMateriPage() {
     try {
       const { data, error } = await supabase
         .from('modules')
-        .select('*, subjects(name)')
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -400,6 +686,7 @@ export default function ManageMateriPage() {
     setExistingFileType(null)
 
     setSelectedSubjectId('')
+    setSelectedSubjectName('')
 
     setQuizTitle('')
     setContentType('text')
@@ -428,7 +715,19 @@ export default function ManageMateriPage() {
     setEditingModuleId(module.id)
 
     setModuleTitle(module.title)
-    setSelectedSubjectId(module.subject_id || '')
+
+    // modules.subject adalah nilai yang ditampilkan dan disimpan oleh CMS.
+    const moduleSubjectName = module.subject?.trim() || ''
+    const matchingSubject = subjectsList.find(
+      (subject) =>
+        subject.name.trim().toLowerCase() ===
+        moduleSubjectName.toLowerCase()
+    )
+
+    setSelectedSubjectName(moduleSubjectName)
+    setSelectedSubjectId(
+      matchingSubject?.id || module.subject_id || ''
+    )
 
     if (module.file_url) {
       setContentType('file')
@@ -665,11 +964,27 @@ export default function ManageMateriPage() {
       // VALIDASI SUBJECT
       // --------------------------------------------------------
 
-      if (!selectedSubjectId) {
+      if (!selectedSubjectName.trim()) {
         throw new Error(
           'Mata Pelajaran wajib dipilih!'
         )
       }
+
+      // Pastikan nama yang disimpan berasal dari tabel subjects.
+      const selectedSubjectRecord = subjectsList.find(
+        (subject) =>
+          subject.name.trim().toLowerCase() ===
+          selectedSubjectName.trim().toLowerCase()
+      )
+
+      if (!selectedSubjectRecord) {
+        throw new Error(
+          'Mata pelajaran tidak ditemukan di database. Silakan refresh daftar mata pelajaran.'
+        )
+      }
+
+      const normalizedSubjectName = selectedSubjectRecord.name.trim()
+      const quizSubjectId = selectedSubjectRecord.id
 
       // --------------------------------------------------------
       // VALIDASI SOAL
@@ -784,8 +1099,9 @@ export default function ManageMateriPage() {
           contentType === 'file'
             ? uploadedFileType
             : null,
-        subject_id:
-          selectedSubjectId || null
+        // Sumber mata pelajaran MODUL = modules.subject (TEXT).
+        subject:
+          normalizedSubjectName
       }
 
       // --------------------------------------------------------
@@ -843,7 +1159,7 @@ export default function ManageMateriPage() {
         questions:
           questions,
         subject_id:
-          selectedSubjectId || null
+          quizSubjectId
       }
 
       // --------------------------------------------------------
@@ -922,8 +1238,8 @@ export default function ManageMateriPage() {
   const filteredModulesList =
     modulesList.filter((mod) =>
       filterSubjectId
-        ? mod.subject_id ===
-          filterSubjectId
+        ? mod.subject?.trim().toLowerCase() ===
+          filterSubjectId.trim().toLowerCase()
         : true
     )
 
@@ -1071,7 +1387,7 @@ export default function ManageMateriPage() {
                     (s) => (
                       <option
                         key={s.id}
-                        value={s.id}
+                        value={s.name}
                       >
                         {s.name}
                       </option>
@@ -1147,10 +1463,10 @@ export default function ManageMateriPage() {
                               </span>
                             )}
 
-                            {mod.subjects?.name && (
+                            {mod.subject && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
                                 <GraduationCap className="w-2.5 h-2.5" />
-                                {mod.subjects.name}
+                                {mod.subject}
                               </span>
                             )}
 
@@ -1315,36 +1631,62 @@ export default function ManageMateriPage() {
                     </span>
                   </label>
 
-                  <select
-                    value={
-                      selectedSubjectId
-                    }
-                    onChange={(e) =>
-                      setSelectedSubjectId(
-                        e.target.value
-                      )
-                    }
-                    required
-                    disabled={
-                      isFetchingSubjects
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all cursor-pointer"
-                  >
-                    <option value="">
-                      -- Pilih Mata Pelajaran --
-                    </option>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedSubjectName}
+                      onChange={(e) => {
+                        const selectedName = e.target.value
+                        const selected = subjectsList.find(
+                          (subject) => subject.name === selectedName
+                        )
 
-                    {subjectsList.map(
-                      (s) => (
-                        <option
-                          key={s.id}
-                          value={s.id}
-                        >
+                        setSelectedSubjectName(selectedName)
+                        setSelectedSubjectId(selected?.id || '')
+                      }}
+                      required
+                      disabled={
+                        isFetchingSubjects || isSubjectLoading
+                      }
+                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">
+                        {isFetchingSubjects
+                          ? 'Memuat mata pelajaran...'
+                          : '-- Pilih Mata Pelajaran --'}
+                      </option>
+
+                      {subjectsList.map((s) => (
+                        <option key={s.id} value={s.name}>
                           {s.name}
                         </option>
-                      )
-                    )}
-                  </select>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={openAddSubjectModal}
+                      disabled={isSubjectLoading}
+                      title="Tambah mata pelajaran"
+                      className="w-10 h-10 shrink-0 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={openManageSubjectModal}
+                      disabled={isSubjectLoading || subjectsList.length === 0}
+                      title="Kelola mata pelajaran"
+                      className="px-3 h-10 shrink-0 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5 text-[11px] font-black transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Kelola
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Mata pelajaran dikelola langsung dari database Supabase.
+                  </p>
                 </div>
 
                 {/* JUDUL MODUL */}
@@ -1798,6 +2140,244 @@ export default function ManageMateriPage() {
               </button>
 
             </motion.form>
+          )}
+        </AnimatePresence>
+
+        {/* ==================================================
+           MODAL: MANAJEMEN MATA PELAJARAN
+           ================================================== */}
+
+        <AnimatePresence>
+          {isSubjectModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) {
+                  closeSubjectModal()
+                }
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.97 }}
+                transition={{ duration: 0.2 }}
+                className="w-full max-w-lg max-h-[90vh] overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-2xl"
+              >
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">
+                      {subjectModalMode === 'add' && !editingSubjectId
+                        ? 'Tambah Mata Pelajaran'
+                        : subjectModalMode === 'add' && editingSubjectId
+                          ? 'Edit Mata Pelajaran'
+                          : 'Kelola Mata Pelajaran'}
+                    </h3>
+                    <p className="text-[10px] font-medium text-slate-400 mt-0.5">
+                      Data tersimpan langsung ke tabel subjects di Supabase.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={closeSubjectModal}
+                    disabled={isSubjectLoading}
+                    className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                    title="Tutup"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto max-h-[calc(90vh-80px)] space-y-4">
+                  {subjectModalMode === 'add' ? (
+                    <form
+                      onSubmit={handleSaveSubject}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700">
+                          Nama Mata Pelajaran
+                          <span className="text-red-500 ml-1">*</span>
+                        </label>
+
+                        <input
+                          autoFocus
+                          type="text"
+                          value={subjectName}
+                          onChange={(e) =>
+                            setSubjectName(e.target.value)
+                          }
+                          placeholder="Contoh: Bahasa Inggris"
+                          maxLength={100}
+                          disabled={isSubjectLoading}
+                          className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-xs font-semibold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all disabled:opacity-60"
+                        />
+
+                        <div className="flex justify-between text-[10px] text-slate-400">
+                          <span>
+                            Nama tidak boleh sama dengan mata pelajaran lain.
+                          </span>
+                          <span>{subjectName.length}/100</span>
+                        </div>
+                      </div>
+
+                      {subjectStatus.msg && (
+                        <div
+                          className={`p-3 rounded-xl text-[11px] font-bold ${
+                            subjectStatus.success
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}
+                        >
+                          {subjectStatus.msg}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingSubjectId) {
+                              setEditingSubjectId(null)
+                              setSubjectName('')
+                              setSubjectStatus({})
+                            } else {
+                              closeSubjectModal()
+                            }
+                          }}
+                          disabled={isSubjectLoading}
+                          className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-black transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {editingSubjectId ? 'Batal Edit' : 'Batal'}
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            isSubjectLoading ||
+                            !subjectName.trim()
+                          }
+                          className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isSubjectLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          )}
+                          {editingSubjectId
+                            ? 'Simpan Perubahan'
+                            : 'Tambah Mata Pelajaran'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      {subjectStatus.msg && (
+                        <div
+                          className={`p-3 rounded-xl text-[11px] font-bold ${
+                            subjectStatus.success
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}
+                        >
+                          {subjectStatus.msg}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {subjectsList.map((subject) => (
+                          <div
+                            key={subject.id}
+                            className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300 transition-all"
+                          >
+                            <div className="w-9 h-9 shrink-0 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                              <GraduationCap className="w-4 h-4" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-black text-slate-800 truncate">
+                                {subject.name}
+                              </p>
+                              <p className="text-[9px] font-medium text-slate-400 mt-0.5">
+                                ID: {subject.id}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleEditSubject(subject)
+                                }
+                                disabled={isSubjectLoading}
+                                className="w-8 h-8 rounded-lg bg-white hover:bg-purple-50 text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                                title="Edit mata pelajaran"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteSubject(subject)
+                                }
+                                disabled={isSubjectLoading}
+                                className="w-8 h-8 rounded-lg bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                                title="Hapus mata pelajaran"
+                              >
+                                {isSubjectLoading ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {subjectsList.length === 0 && (
+                          <div className="py-10 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+                            <GraduationCap className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <p className="text-xs font-bold text-slate-500">
+                              Belum ada mata pelajaran.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubjectModalMode('add')
+                                setSubjectName('')
+                                setSubjectStatus({})
+                              }}
+                              className="mt-3 text-xs font-black text-purple-600 hover:text-purple-700"
+                            >
+                              + Tambah mata pelajaran pertama
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubjectModalMode('add')
+                          setEditingSubjectId(null)
+                          setSubjectName('')
+                          setSubjectStatus({})
+                        }}
+                        className="w-full py-2.5 border-2 border-dashed border-purple-200 hover:border-purple-400 text-purple-600 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Tambah Mata Pelajaran
+                      </button>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>
 

@@ -1,7 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// PERBAIKAN: Mengubah nama fungsi dari 'middleware' menjadi 'proxy'
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -19,7 +18,7 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({
             request,
           })
@@ -32,7 +31,7 @@ export async function proxy(request: NextRequest) {
   )
 
   // 2. Ambil data session user yang sedang aktif dari Supabase Auth
-  let user: any = null;
+  let user: { id: string } | null = null;
   let role: string | null = null;
   let isOfflineFallback = false;
 
@@ -55,9 +54,10 @@ export async function proxy(request: NextRequest) {
         
       role = profile?.role;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     // Tangani error jaringan (Offline)
-    console.warn("Supabase Auth Error di Proxy (mungkin offline):", error.message);
+    console.warn("Supabase Auth Error di Proxy (mungkin offline):", err.message);
     
     // OFFLINE FALLBACK: Cek apakah ada cookie sesi yang valid
     const cookies = request.cookies.getAll();
@@ -66,9 +66,6 @@ export async function proxy(request: NextRequest) {
     if (hasAuthCookie) {
       console.log("Menggunakan fallback offline, cookie auth ditemukan.");
       isOfflineFallback = true;
-      // Kita asumsikan user sudah login jika ada cookie, 
-      // namun kita tidak bisa membaca profil role dari DB saat offline.
-      // Untuk PWA, kita izinkan lewat karena service worker akan melayani file lokal.
       user = { id: 'offline-user' };
       role = 'user'; // Secara default beri akses sebagai user
     }
@@ -121,6 +118,9 @@ export async function proxy(request: NextRequest) {
 
   return response
 }
+
+// Export kompatibilitas alias untuk Next.js
+export { proxy as middleware }
 
 // Menentukan rute mana saja yang harus diawasi oleh Proxy ini
 export const config = {
