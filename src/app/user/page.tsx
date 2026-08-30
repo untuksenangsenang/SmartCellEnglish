@@ -17,7 +17,8 @@ import {
   User, 
   CheckCircle2, 
   AlertCircle,
-  Loader2
+  Loader2,
+  PenLine
 } from 'lucide-react'
 
 export default function UserDashboard() {
@@ -112,13 +113,13 @@ export default function UserDashboard() {
     accentColor: "group-hover:text-emerald-600"
   },
   {
-    title: "Homework",
-    desc: "Lihat Pekerjaan Rumah yang diberikan oleh pengajar, lengkap dengan mata pelajaran, instruksi tugas, dan tenggat waktu.",
-    icon: BookOpen,
+    title: "Kuis & Evaluasi",
+    desc: "Kerjakan kuis evaluasi mandiri berisi soal Pilihan Ganda dan Essay. Pantau hasil skor serta feedback dari mentor.",
+    icon: PenLine,
     bgColor: "bg-purple-50 text-purple-600",
     borderHover: "hover:border-purple-300 hover:shadow-purple-100/50",
-    link: "/user/homework",
-    actionText: "Lihat Homework",
+    link: "/user/quizzes",
+    actionText: "Mulai Kuis",
     accentColor: "group-hover:text-purple-600"
   },
   {

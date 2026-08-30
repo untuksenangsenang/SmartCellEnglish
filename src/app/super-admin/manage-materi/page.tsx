@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -9,7 +9,6 @@ import {
   BookOpen,
   FileText,
   Music,
-  HelpCircle,
   Plus,
   Sparkles,
   Loader2,
@@ -20,32 +19,12 @@ import {
   Trash2,
   ListFilter,
   GraduationCap,
-  ClipboardCheck,
-  Clock,
-  X
+  X,
 } from 'lucide-react'
-
-// ============================================================
-// INTERFACES & TYPES
-// ============================================================
 
 interface SubjectData {
   id: string
   name: string
-}
-
-interface QuestionStructure {
-  question: string
-  options?: string[]
-  correct_answer?: string
-  type?: 'multiple_choice' | 'essay'
-  answer_key?: string
-}
-
-interface CorrectionSummary {
-  total: number
-  corrected: number
-  pending: number
 }
 
 interface ModuleData {
@@ -60,87 +39,46 @@ interface ModuleData {
   subject_id?: string | null
 }
 
-// ============================================================
-// KOMPONEN UTAMA
-// ============================================================
+interface StatusState {
+  success?: boolean
+  msg?: string
+}
 
 export default function ManageMateriPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  // ── View Mode ──────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list')
-
-  // ── Data Utama ─────────────────────────────────────────────
   const [modulesList, setModulesList] = useState<ModuleData[]>([])
-  const [isFetching, setIsFetching] = useState(true)
-
-  // ── Data Mata Pelajaran ────────────────────────────────────
   const [subjectsList, setSubjectsList] = useState<SubjectData[]>([])
+  const [isFetching, setIsFetching] = useState(true)
   const [isFetchingSubjects, setIsFetchingSubjects] = useState(true)
 
-  // ── Filter List ────────────────────────────────────────────
-  // modules.subject adalah sumber utama mata pelajaran pada CMS.
-  const [filterSubjectId, setFilterSubjectId] = useState<string>('')
+  const [filterSubjectId, setFilterSubjectId] = useState('')
 
-  // ── Ringkasan Koreksi ──────────────────────────────────────
-  const [correctionMap, setCorrectionMap] = useState<
-    Record<string, CorrectionSummary>
-  >({})
-
-  // ── State Edit Mode ────────────────────────────────────────
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null)
-  const [editingQuizId, setEditingQuizId] = useState<string | null>(null)
-
-  // ── Tipe Konten Form ───────────────────────────────────────
   const [contentType, setContentType] = useState<'text' | 'file'>('text')
   const [isDragActive, setIsDragActive] = useState(false)
 
-  // ── Form: Data Modul ───────────────────────────────────────
   const [moduleTitle, setModuleTitle] = useState('')
   const [moduleContent, setModuleContent] = useState('')
   const [audioUrl, setAudioUrl] = useState('')
   const [fileDoc, setFileDoc] = useState<File | null>(null)
   const [existingFileUrl, setExistingFileUrl] = useState<string | null>(null)
   const [existingFileType, setExistingFileType] = useState<string | null>(null)
-  // selectedSubjectId tetap dipakai untuk relasi quiz.subject_id (legacy/relasional).
-  // Untuk tabel modules, yang disimpan hanya selectedSubjectName -> modules.subject.
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('')
-  const [selectedSubjectName, setSelectedSubjectName] = useState<string>('')
 
-  // ── State Manajemen Mata Pelajaran ─────────────────────────
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const [selectedSubjectName, setSelectedSubjectName] = useState('')
+
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false)
   const [subjectModalMode, setSubjectModalMode] = useState<'add' | 'manage'>('add')
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null)
   const [subjectName, setSubjectName] = useState('')
   const [isSubjectLoading, setIsSubjectLoading] = useState(false)
-  const [subjectStatus, setSubjectStatus] = useState<{
-    success?: boolean
-    msg?: string
-  }>({})
+  const [subjectStatus, setSubjectStatus] = useState<StatusState>({})
 
-  // ── Form: Data Kuis ────────────────────────────────────────
-  const [quizTitle, setQuizTitle] = useState('')
-  const [questions, setQuestions] = useState<QuestionStructure[]>([
-    {
-      question: '',
-      options: ['', '', '', ''],
-      correct_answer: '',
-      type: 'multiple_choice',
-      answer_key: ''
-    }
-  ])
-
-  // ── UI Feedback ────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(false)
-  const [status, setStatus] = useState<{
-    success?: boolean
-    msg?: string
-  }>({})
-
-  // ============================================================
-  // [READ] FETCH MATA PELAJARAN
-  // ============================================================
+  const [status, setStatus] = useState<StatusState>({})
 
   const fetchSubjects = useCallback(async () => {
     setIsFetchingSubjects(true)
@@ -152,48 +90,77 @@ export default function ManageMateriPage() {
         .order('name', { ascending: true })
 
       if (error) throw error
-
-      setSubjectsList(data || [])
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal mengambil data subjects'
-
-      console.error('fetchSubjects error:', msg)
+      setSubjectsList((data || []) as SubjectData[])
+    } catch (error) {
+      console.error('fetchSubjects error:', error)
     } finally {
       setIsFetchingSubjects(false)
     }
   }, [supabase])
 
-  // ============================================================
-  // [REALTIME] SINKRONISASI MATA PELAJARAN
-  // ============================================================
+  const fetchModules = useCallback(async () => {
+    setIsFetching(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('modules')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const modules = (data || []) as ModuleData[]
+      setModulesList(modules)
+    } catch (error) {
+      console.error('fetchModules error:', error)
+      setStatus({
+        success: false,
+        msg: error instanceof Error ? error.message : 'Gagal mengambil data materi.',
+      })
+    } finally {
+      setIsFetching(false)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    fetchModules()
+    fetchSubjects()
+  }, [fetchModules, fetchSubjects])
 
   useEffect(() => {
     const channel = supabase
-      .channel('subjects-management')
+      .channel('manage-materi-realtime')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'subjects'
-        },
-        () => {
-          fetchSubjects()
-        }
+        { event: '*', schema: 'public', table: 'modules' },
+        () => fetchModules()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'subjects' },
+        () => fetchSubjects()
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, fetchSubjects])
+  }, [supabase, fetchModules, fetchSubjects])
 
-  // ============================================================
-  // [CRUD] MANAJEMEN MATA PELAJARAN
-  // ============================================================
+  const resetForm = () => {
+    setEditingModuleId(null)
+    setModuleTitle('')
+    setModuleContent('')
+    setAudioUrl('')
+    setFileDoc(null)
+    setExistingFileUrl(null)
+    setExistingFileType(null)
+    setSelectedSubjectId('')
+    setSelectedSubjectName('')
+    setContentType('text')
+    setStatus({})
+    setViewMode('list')
+  }
 
   const openAddSubjectModal = () => {
     setSubjectModalMode('add')
@@ -220,23 +187,15 @@ export default function ManageMateriPage() {
     setSubjectModalMode('add')
   }
 
-  const handleSaveSubject = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSaveSubject = async (event: React.FormEvent) => {
+    event.preventDefault()
 
     const trimmedName = subjectName.trim()
-
-    if (!trimmedName) {
-      setSubjectStatus({
-        success: false,
-        msg: 'Nama mata pelajaran wajib diisi.'
-      })
-      return
-    }
 
     if (trimmedName.length < 2) {
       setSubjectStatus({
         success: false,
-        msg: 'Nama mata pelajaran minimal 2 karakter.'
+        msg: 'Nama mata pelajaran minimal 2 karakter.',
       })
       return
     }
@@ -245,7 +204,6 @@ export default function ManageMateriPage() {
     setSubjectStatus({})
 
     try {
-      // Cegah duplikat tanpa bergantung hanya pada case-sensitive UNIQUE.
       const { data: duplicateData, error: duplicateError } = await supabase
         .from('subjects')
         .select('id, name')
@@ -260,16 +218,14 @@ export default function ManageMateriPage() {
       )
 
       if (duplicate) {
-        throw new Error(
-          `Mata pelajaran "${duplicate.name}" sudah tersedia. Gunakan nama lain.`
-        )
+        throw new Error(`Mata pelajaran "${duplicate.name}" sudah tersedia.`)
       }
 
       if (editingSubjectId) {
         const currentSubject = subjectsList.find(
           (subject) => subject.id === editingSubjectId
         )
-        const oldSubjectName = currentSubject?.name?.trim() || ''
+        const oldName = currentSubject?.name?.trim() || ''
 
         const { error } = await supabase
           .from('subjects')
@@ -278,34 +234,34 @@ export default function ManageMateriPage() {
 
         if (error) throw error
 
-        // Sinkronkan juga semua modules yang menyimpan nama mapel di kolom `subject`.
-        // Ini penting karena modules tidak lagi bergantung pada modules.subject_id.
-        if (oldSubjectName && oldSubjectName !== trimmedName) {
+        if (oldName && oldName !== trimmedName) {
           const { error: moduleSyncError } = await supabase
             .from('modules')
             .update({ subject: trimmedName })
-            .eq('subject', oldSubjectName)
+            .eq('subject', oldName)
 
           if (moduleSyncError) {
-            // Rollback nama subject jika sinkronisasi modul gagal.
             await supabase
               .from('subjects')
-              .update({ name: oldSubjectName })
+              .update({ name: oldName })
               .eq('id', editingSubjectId)
+
             throw moduleSyncError
           }
 
-          if (selectedSubjectName.trim().toLowerCase() === oldSubjectName.toLowerCase()) {
+          if (
+            selectedSubjectName.trim().toLowerCase() === oldName.toLowerCase()
+          ) {
             setSelectedSubjectName(trimmedName)
           }
         }
 
         setSubjectStatus({
           success: true,
-          msg: 'Mata pelajaran dan modul terkait berhasil disinkronkan.'
+          msg: 'Mata pelajaran dan materi terkait berhasil disinkronkan.',
         })
       } else {
-        const { data: insertedSubject, error } = await supabase
+        const { data, error } = await supabase
           .from('subjects')
           .insert({ name: trimmedName })
           .select('id, name')
@@ -313,14 +269,14 @@ export default function ManageMateriPage() {
 
         if (error) throw error
 
-        if (insertedSubject) {
-          setSelectedSubjectId(insertedSubject.id)
-          setSelectedSubjectName(insertedSubject.name)
+        if (data) {
+          setSelectedSubjectId(data.id)
+          setSelectedSubjectName(data.name)
         }
 
         setSubjectStatus({
           success: true,
-          msg: 'Mata pelajaran berhasil ditambahkan dan siap dipakai untuk modul.'
+          msg: 'Mata pelajaran berhasil ditambahkan.',
         })
       }
 
@@ -328,17 +284,11 @@ export default function ManageMateriPage() {
       setSubjectName('')
       setEditingSubjectId(null)
       setSubjectModalMode('manage')
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal menyimpan mata pelajaran.'
-
-      console.error('handleSaveSubject error:', err)
-
+    } catch (error) {
+      console.error('handleSaveSubject error:', error)
       setSubjectStatus({
         success: false,
-        msg
+        msg: error instanceof Error ? error.message : 'Gagal menyimpan mata pelajaran.',
       })
     } finally {
       setIsSubjectLoading(false)
@@ -356,7 +306,7 @@ export default function ManageMateriPage() {
     if (isSubjectLoading) return
 
     const confirmed = confirm(
-      `Hapus mata pelajaran "${subject.name}"?\n\nMata pelajaran yang masih digunakan oleh modul tidak dapat dihapus agar relasi database tetap aman.`
+      `Hapus mata pelajaran "${subject.name}"?\n\nMata pelajaran yang masih digunakan oleh materi atau kuis tidak dapat dihapus.`
     )
 
     if (!confirmed) return
@@ -365,11 +315,7 @@ export default function ManageMateriPage() {
     setSubjectStatus({})
 
     try {
-      // modules menggunakan kolom TEXT `subject` sebagai sumber utama.
-      const {
-        count: moduleCount,
-        error: moduleCheckError
-      } = await supabase
+      const { count: moduleCount, error: moduleCheckError } = await supabase
         .from('modules')
         .select('id', { count: 'exact', head: true })
         .eq('subject', subject.name)
@@ -378,15 +324,11 @@ export default function ManageMateriPage() {
 
       if ((moduleCount || 0) > 0) {
         throw new Error(
-          `Mata pelajaran "${subject.name}" masih digunakan oleh ${moduleCount} modul. Ubah modul terkait terlebih dahulu.`
+          `"${subject.name}" masih digunakan oleh ${moduleCount} materi.`
         )
       }
 
-      // Cek juga quiz yang mungkin masih memakai subject_id.
-      const {
-        count: quizCount,
-        error: quizCheckError
-      } = await supabase
+      const { count: quizCount, error: quizCheckError } = await supabase
         .from('quizzes')
         .select('id', { count: 'exact', head: true })
         .eq('subject_id', subject.id)
@@ -395,339 +337,51 @@ export default function ManageMateriPage() {
 
       if ((quizCount || 0) > 0) {
         throw new Error(
-          `Mata pelajaran "${subject.name}" masih digunakan oleh ${quizCount} paket kuis. Ubah atau hapus kuis terkait terlebih dahulu.`
+          `"${subject.name}" masih digunakan oleh ${quizCount} kuis.`
         )
       }
 
-      const { error: deleteError } = await supabase
+      const { error } = await supabase
         .from('subjects')
         .delete()
         .eq('id', subject.id)
 
-      if (deleteError) throw deleteError
-
-      if (selectedSubjectId === subject.id) {
-        setSelectedSubjectId('')
-      }
-      if (selectedSubjectName.trim().toLowerCase() === subject.name.trim().toLowerCase()) {
-        setSelectedSubjectName('')
-      }
+      if (error) throw error
 
       await fetchSubjects()
 
+      if (selectedSubjectId === subject.id) {
+        setSelectedSubjectId('')
+        setSelectedSubjectName('')
+      }
+
       setSubjectStatus({
         success: true,
-        msg: `Mata pelajaran "${subject.name}" berhasil dihapus.`
+        msg: `Mata pelajaran "${subject.name}" berhasil dihapus.`,
       })
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal menghapus mata pelajaran.'
-
-      console.error('handleDeleteSubject error:', err)
-
+    } catch (error) {
+      console.error('handleDeleteSubject error:', error)
       setSubjectStatus({
         success: false,
-        msg
+        msg: error instanceof Error ? error.message : 'Gagal menghapus mata pelajaran.',
       })
     } finally {
       setIsSubjectLoading(false)
     }
   }
 
-  // ============================================================
-  // [READ] FETCH RINGKASAN KOREKSI
-  //
-  // RELASI DATABASE:
-  //
-  // quizzes.id
-  //     ↓
-  // quiz_attempts.quiz_id
-  //     ↓
-  // quiz_answers.attempt_id
-  //
-  // Status koreksi:
-  // quiz_answers.is_corrected
-  // ============================================================
-
-  const fetchCorrectionSummaries = useCallback(
-    async (modules: ModuleData[]) => {
-      try {
-        const moduleIds = Array.from(
-          new Set(modules.map((m) => m.id).filter(Boolean))
-        )
-
-        if (moduleIds.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        // --------------------------------------------------------
-        // STEP 1:
-        // Ambil semua quiz berdasarkan module_id
-        // --------------------------------------------------------
-
-        const {
-          data: quizzesData,
-          error: quizError
-        } = await supabase
-          .from('quizzes')
-          .select('id, module_id')
-          .in('module_id', moduleIds)
-
-        if (quizError) {
-          console.warn(
-            'Gagal mengambil quizzes untuk ringkasan koreksi:',
-            quizError.message
-          )
-          return
-        }
-
-        if (!quizzesData || quizzesData.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        const quizIds = quizzesData
-          .map((quiz) => quiz.id)
-          .filter(Boolean)
-
-        if (quizIds.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        // Map quiz_id → module_id
-        const quizModuleMap: Record<string, string> = {}
-
-        quizzesData.forEach((quiz) => {
-          if (quiz.id && quiz.module_id) {
-            quizModuleMap[quiz.id] = quiz.module_id
-          }
-        })
-
-        // --------------------------------------------------------
-        // STEP 2:
-        // Ambil quiz_attempts berdasarkan quiz_id
-        // --------------------------------------------------------
-
-        const {
-          data: attemptsData,
-          error: attemptsError
-        } = await supabase
-          .from('quiz_attempts')
-          .select('id, quiz_id')
-          .in('quiz_id', quizIds)
-
-        if (attemptsError) {
-          console.warn(
-            'Gagal mengambil quiz_attempts:',
-            attemptsError.message
-          )
-          return
-        }
-
-        if (!attemptsData || attemptsData.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        const attemptIds = attemptsData
-          .map((attempt) => attempt.id)
-          .filter(Boolean)
-
-        if (attemptIds.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        // Map attempt_id → module_id
-        const attemptModuleMap: Record<string, string> = {}
-
-        attemptsData.forEach((attempt) => {
-          const moduleId = quizModuleMap[attempt.quiz_id]
-
-          if (attempt.id && moduleId) {
-            attemptModuleMap[attempt.id] = moduleId
-          }
-        })
-
-        // --------------------------------------------------------
-        // STEP 3:
-        // Ambil quiz_answers berdasarkan attempt_id
-        // --------------------------------------------------------
-
-        const {
-          data: answersData,
-          error: answersError
-        } = await supabase
-          .from('quiz_answers')
-          .select('id, attempt_id, is_corrected')
-          .in('attempt_id', attemptIds)
-
-        if (answersError) {
-          console.warn(
-            'Gagal mengambil quiz_answers:',
-            answersError.message
-          )
-          return
-        }
-
-        if (!answersData || answersData.length === 0) {
-          setCorrectionMap({})
-          return
-        }
-
-        // --------------------------------------------------------
-        // STEP 4:
-        // Bangun summary berdasarkan module_id
-        // --------------------------------------------------------
-
-        const summaryMap: Record<string, CorrectionSummary> = {}
-
-        answersData.forEach((answer) => {
-          const moduleId = attemptModuleMap[answer.attempt_id]
-
-          if (!moduleId) return
-
-          if (!summaryMap[moduleId]) {
-            summaryMap[moduleId] = {
-              total: 0,
-              corrected: 0,
-              pending: 0
-            }
-          }
-
-          summaryMap[moduleId].total++
-
-          if (answer.is_corrected === true) {
-            summaryMap[moduleId].corrected++
-          } else {
-            summaryMap[moduleId].pending++
-          }
-        })
-
-        setCorrectionMap(summaryMap)
-      } catch (err: unknown) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Unknown error'
-
-        console.warn(
-          'fetchCorrectionSummaries dilewati karena error non-kritis:',
-          msg
-        )
-      }
-    },
-    [supabase]
-  )
-
-  // ============================================================
-  // [READ] FETCH SEMUA MODUL
-  // ============================================================
-
-  const fetchModules = useCallback(async () => {
-    setIsFetching(true)
-
-    try {
-      const { data, error } = await supabase
-        .from('modules')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      const modules = (data || []) as ModuleData[]
-
-      setModulesList(modules)
-
-      if (modules.length > 0) {
-        await fetchCorrectionSummaries(modules)
-      } else {
-        setCorrectionMap({})
-      }
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal mengambil data'
-
-      console.error('fetchModules error:', msg)
-    } finally {
-      setIsFetching(false)
-    }
-  }, [supabase, fetchCorrectionSummaries])
-
-  // ============================================================
-  // INITIAL LOAD
-  // ============================================================
-
-  useEffect(() => {
-    fetchModules()
-    fetchSubjects()
-  }, [fetchModules, fetchSubjects])
-
-  // ============================================================
-  // HELPER: RESET FORM
-  // ============================================================
-
-  const resetFormToInitial = () => {
-    setEditingModuleId(null)
-    setEditingQuizId(null)
-
-    setModuleTitle('')
-    setModuleContent('')
-    setAudioUrl('')
-
-    setFileDoc(null)
-    setExistingFileUrl(null)
-    setExistingFileType(null)
-
-    setSelectedSubjectId('')
-    setSelectedSubjectName('')
-
-    setQuizTitle('')
-    setContentType('text')
-
-    setQuestions([
-      {
-        question: '',
-        options: ['', '', '', ''],
-        correct_answer: '',
-        type: 'multiple_choice',
-        answer_key: ''
-      }
-    ])
-
-    setViewMode('list')
-    setStatus({})
-  }
-
-  // ============================================================
-  // EDIT HANDLER
-  // ============================================================
-
-  const handleEditClick = async (module: ModuleData) => {
-    setIsLoading(true)
-    setStatus({})
+  const handleEditClick = (module: ModuleData) => {
     setEditingModuleId(module.id)
-
     setModuleTitle(module.title)
 
-    // modules.subject adalah nilai yang ditampilkan dan disimpan oleh CMS.
     const moduleSubjectName = module.subject?.trim() || ''
     const matchingSubject = subjectsList.find(
       (subject) =>
-        subject.name.trim().toLowerCase() ===
-        moduleSubjectName.toLowerCase()
+        subject.name.trim().toLowerCase() === moduleSubjectName.toLowerCase()
     )
 
     setSelectedSubjectName(moduleSubjectName)
-    setSelectedSubjectId(
-      matchingSubject?.id || module.subject_id || ''
-    )
+    setSelectedSubjectId(matchingSubject?.id || module.subject_id || '')
 
     if (module.file_url) {
       setContentType('file')
@@ -743,234 +397,69 @@ export default function ManageMateriPage() {
       setExistingFileType(null)
     }
 
-    try {
-      const {
-        data: quizData,
-        error: quizError
-      } = await supabase
-        .from('quizzes')
-        .select('*')
-        .eq('module_id', module.id)
-        .maybeSingle()
+    setStatus({})
+    setViewMode('form')
+  }
 
-      if (quizError) throw quizError
+  const handleDeleteClick = async (moduleId: string) => {
+    const linkedQuiz = await supabase
+      .from('quizzes')
+      .select('id, title')
+      .eq('module_id', moduleId)
 
-      if (quizData) {
-        setEditingQuizId(quizData.id)
-        setQuizTitle(quizData.title)
+    if (linkedQuiz.error) {
+      alert(`Gagal memeriksa quiz terkait: ${linkedQuiz.error.message}`)
+      return
+    }
 
-        const mappedQuestions = (quizData.questions || []).map(
-          (q: QuestionStructure) => ({
-            question: q.question || '',
-            options: q.options || ['', '', '', ''],
-            correct_answer: q.correct_answer || '',
-            type: q.type || 'multiple_choice',
-            answer_key: q.answer_key || ''
-          })
-        )
-
-        setQuestions(
-          mappedQuestions.length > 0
-            ? mappedQuestions
-            : [
-                {
-                  question: '',
-                  options: ['', '', '', ''],
-                  correct_answer: '',
-                  type: 'multiple_choice',
-                  answer_key: ''
-                }
-              ]
-        )
-      } else {
-        setEditingQuizId(null)
-        setQuizTitle('')
-
-        setQuestions([
-          {
-            question: '',
-            options: ['', '', '', ''],
-            correct_answer: '',
-            type: 'multiple_choice',
-            answer_key: ''
-          }
-        ])
-      }
-
-      setViewMode('form')
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal mengambil data kuis'
-
-      console.error(err)
-
+    if ((linkedQuiz.data || []).length > 0) {
       alert(
-        `Gagal mengambil data kuis pelengkap: ${msg}`
+        `Materi tidak dapat dihapus karena masih memiliki ${
+          linkedQuiz.data?.length || 0
+        } quiz terkait.\n\nHapus atau lepaskan quiz tersebut melalui Manage Quiz terlebih dahulu.`
+      )
+      return
+    }
+
+    if (!confirm('Apakah Anda yakin ingin menghapus materi ini?')) return
+
+    setIsLoading(true)
+
+    try {
+      const { error } = await supabase
+        .from('modules')
+        .delete()
+        .eq('id', moduleId)
+
+      if (error) throw error
+
+      await fetchModules()
+      alert('Materi berhasil dihapus.')
+    } catch (error) {
+      alert(
+        `Gagal menghapus materi: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
       )
     } finally {
       setIsLoading(false)
     }
   }
 
-  // ============================================================
-  // DELETE HANDLER
-  // ============================================================
-
-  const handleDeleteClick = async (moduleId: string) => {
-    if (
-      !confirm(
-        'Apakah Anda yakin ingin menghapus modul ini beserta kuis di dalamnya?'
-      )
-    ) {
-      return
-    }
-
-    try {
-      // Hapus quiz terlebih dahulu
-      const {
-        error: quizDelError
-      } = await supabase
-        .from('quizzes')
-        .delete()
-        .eq('module_id', moduleId)
-
-      if (quizDelError) throw quizDelError
-
-      // Kemudian hapus module
-      const {
-        error: moduleDelError
-      } = await supabase
-        .from('modules')
-        .delete()
-        .eq('id', moduleId)
-
-      if (moduleDelError) throw moduleDelError
-
-      alert('Materi dan kuis berhasil dieliminasi dari sistem.')
-
-      fetchModules()
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Gagal menghapus'
-
-      console.error(err)
-
-      alert(`Gagal menghapus data: ${msg}`)
-    }
-  }
-
-  // ============================================================
-  // DYNAMIC SOAL LOGIC
-  // ============================================================
-
-  const addQuestionField = () => {
-    setQuestions([
-      ...questions,
-      {
-        question: '',
-        options: ['', '', '', ''],
-        correct_answer: '',
-        type: 'multiple_choice',
-        answer_key: ''
-      }
-    ])
-  }
-
-  const removeQuestionField = (index: number) => {
-    if (questions.length === 1) {
-      alert('Kuis minimal harus memiliki 1 pertanyaan!')
-      return
-    }
-
-    setQuestions(
-      questions.filter((_, i) => i !== index)
-    )
-  }
-
-  const handleQuestionChange = (
-    index: number,
-    field: string,
-    value: string,
-    optionIndex?: number
-  ) => {
-    const updatedQuestions = [...questions]
-
-    if (field === 'question') {
-      updatedQuestions[index].question = value
-    }
-
-    else if (field === 'correct_answer') {
-      updatedQuestions[index].correct_answer = value
-    }
-
-    else if (field === 'type') {
-      updatedQuestions[index].type =
-        value as 'multiple_choice' | 'essay'
-
-      if (value === 'essay') {
-        updatedQuestions[index].options = []
-        updatedQuestions[index].correct_answer = ''
-      } else {
-        updatedQuestions[index].options = [
-          '',
-          '',
-          '',
-          ''
-        ]
-
-        updatedQuestions[index].correct_answer = ''
-        updatedQuestions[index].answer_key = ''
-      }
-    }
-
-    else if (field === 'answer_key') {
-      updatedQuestions[index].answer_key = value
-    }
-
-    else if (
-      field === 'option' &&
-      optionIndex !== undefined
-    ) {
-      const opts =
-        updatedQuestions[index].options ||
-        ['', '', '', '']
-
-      opts[optionIndex] = value
-
-      updatedQuestions[index].options = opts
-    }
-
-    setQuestions(updatedQuestions)
-  }
-
-  // ============================================================
-  // SUBMIT HANDLER
-  // ============================================================
-
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault()
-
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setIsLoading(true)
     setStatus({})
 
     try {
-      // --------------------------------------------------------
-      // VALIDASI SUBJECT
-      // --------------------------------------------------------
-
       if (!selectedSubjectName.trim()) {
-        throw new Error(
-          'Mata Pelajaran wajib dipilih!'
-        )
+        throw new Error('Mata Pelajaran wajib dipilih.')
       }
 
-      // Pastikan nama yang disimpan berasal dari tabel subjects.
+      if (!moduleTitle.trim()) {
+        throw new Error('Judul materi wajib diisi.')
+      }
+
       const selectedSubjectRecord = subjectsList.find(
         (subject) =>
           subject.name.trim().toLowerCase() ===
@@ -979,330 +468,132 @@ export default function ManageMateriPage() {
 
       if (!selectedSubjectRecord) {
         throw new Error(
-          'Mata pelajaran tidak ditemukan di database. Silakan refresh daftar mata pelajaran.'
+          'Mata pelajaran tidak ditemukan. Silakan refresh daftar mata pelajaran.'
         )
       }
 
       const normalizedSubjectName = selectedSubjectRecord.name.trim()
-      const quizSubjectId = selectedSubjectRecord.id
 
-      // --------------------------------------------------------
-      // VALIDASI SOAL
-      // --------------------------------------------------------
-
-      for (const q of questions) {
-        if (!q.question.trim()) {
-          throw new Error(
-            'Semua kolom soal wajib diisi!'
-          )
-        }
-
-        if (
-          (q.type || 'multiple_choice') ===
-          'multiple_choice'
-        ) {
-          if (
-            !q.correct_answer ||
-            !q.options ||
-            q.options.some(
-              (opt) => !opt.trim()
-            )
-          ) {
-            throw new Error(
-              'Semua kolom pilihan ganda dan kunci jawaban wajib ditentukan!'
-            )
-          }
-        }
-      }
-
-      // --------------------------------------------------------
-      // UPLOAD FILE
-      // --------------------------------------------------------
-
-      let uploadedFileUrl =
-        existingFileUrl
-
-      let uploadedFileType =
-        existingFileType
+      let uploadedFileUrl = existingFileUrl
+      let uploadedFileType = existingFileType
 
       if (contentType === 'file') {
         if (!fileDoc && !existingFileUrl) {
-          throw new Error(
-            'Silakan pilih atau jatuhkan file PDF/Word terlebih dahulu!'
-          )
+          throw new Error('Silakan pilih file PDF/Word terlebih dahulu.')
         }
 
         if (fileDoc) {
           const fileExt =
-            fileDoc.name
-              .split('.')
-              .pop()
-              ?.toLowerCase() || ''
+            fileDoc.name.split('.').pop()?.toLowerCase() || ''
 
-          const fileName =
-            `${Date.now()}.${fileExt}`
-
-          const filePath =
-            `documents/${fileName}`
-
-          const {
-            error: uploadError
-          } = await supabase.storage
-            .from('modules')
-            .upload(
-              filePath,
-              fileDoc
-            )
-
-          if (uploadError) {
-            throw uploadError
+          if (!['pdf', 'doc', 'docx'].includes(fileExt)) {
+            throw new Error('Format file harus PDF, DOC, atau DOCX.')
           }
 
-          const {
-            data: {
-              publicUrl
-            }
-          } = supabase.storage
+          const filePath = `documents/${Date.now()}-${fileDoc.name.replace(
+            /[^a-zA-Z0-9._-]/g,
+            '-'
+          )}`
+
+          const { error: uploadError } = await supabase.storage
+            .from('modules')
+            .upload(filePath, fileDoc, { upsert: false })
+
+          if (uploadError) throw uploadError
+
+          const { data } = supabase.storage
             .from('modules')
             .getPublicUrl(filePath)
 
-          uploadedFileUrl =
-            publicUrl
-
-          uploadedFileType =
-            fileExt
+          uploadedFileUrl = data.publicUrl
+          uploadedFileType = fileExt
         }
       }
-
-      // --------------------------------------------------------
-      // MODULE PAYLOAD
-      // --------------------------------------------------------
-
-      let activeModuleId =
-        editingModuleId
 
       const modulePayload = {
-        title: moduleTitle,
-        content_text:
-          contentType === 'text'
-            ? moduleContent
-            : '',
-        audio_url:
-          contentType === 'text'
-            ? audioUrl || null
-            : null,
-        file_url:
-          contentType === 'file'
-            ? uploadedFileUrl
-            : null,
-        file_type:
-          contentType === 'file'
-            ? uploadedFileType
-            : null,
-        // Sumber mata pelajaran MODUL = modules.subject (TEXT).
-        subject:
-          normalizedSubjectName
+        title: moduleTitle.trim(),
+        content_text: contentType === 'text' ? moduleContent : '',
+        audio_url: contentType === 'text' ? audioUrl.trim() || null : null,
+        file_url: contentType === 'file' ? uploadedFileUrl : null,
+        file_type: contentType === 'file' ? uploadedFileType : null,
+        subject: normalizedSubjectName,
       }
-
-      // --------------------------------------------------------
-      // UPDATE MODULE
-      // --------------------------------------------------------
 
       if (editingModuleId) {
-        const {
-          error: moduleUpdateError
-        } = await supabase
+        const { error } = await supabase
           .from('modules')
           .update(modulePayload)
-          .eq(
-            'id',
-            editingModuleId
-          )
+          .eq('id', editingModuleId)
 
-        if (moduleUpdateError) {
-          throw moduleUpdateError
-        }
-      }
+        if (error) throw error
 
-      // --------------------------------------------------------
-      // INSERT MODULE
-      // --------------------------------------------------------
-
-      else {
-        const {
-          data: moduleData,
-          error: moduleError
-        } = await supabase
+        setStatus({
+          success: true,
+          msg: 'Materi berhasil diperbarui.',
+        })
+      } else {
+        const { error } = await supabase
           .from('modules')
           .insert(modulePayload)
-          .select()
-          .single()
 
-        if (moduleError) {
-          throw moduleError
-        }
+        if (error) throw error
 
-        activeModuleId =
-          moduleData.id
+        setStatus({
+          success: true,
+          msg: 'Materi berhasil diterbitkan.',
+        })
       }
 
-      // --------------------------------------------------------
-      // QUIZ PAYLOAD
-      // --------------------------------------------------------
-
-      const quizPayload = {
-        module_id:
-          activeModuleId,
-        title:
-          quizTitle ||
-          `Kuis: ${moduleTitle}`,
-        questions:
-          questions,
-        subject_id:
-          quizSubjectId
-      }
-
-      // --------------------------------------------------------
-      // UPDATE QUIZ
-      // --------------------------------------------------------
-
-      if (editingQuizId) {
-        const {
-          error: quizUpdateError
-        } = await supabase
-          .from('quizzes')
-          .update(quizPayload)
-          .eq(
-            'id',
-            editingQuizId
-          )
-
-        if (quizUpdateError) {
-          throw quizUpdateError
-        }
-      }
-
-      // --------------------------------------------------------
-      // INSERT QUIZ
-      // --------------------------------------------------------
-
-      else {
-        const {
-          error: quizError
-        } = await supabase
-          .from('quizzes')
-          .insert(quizPayload)
-
-        if (quizError) {
-          throw quizError
-        }
-      }
-
-      // --------------------------------------------------------
-      // SUCCESS
-      // --------------------------------------------------------
-
-      setStatus({
-        success: true,
-        msg: editingModuleId
-          ? 'Perubahan materi & paket kuis berhasil diperbarui!'
-          : 'Modul Pembelajaran & Paket Kuis baru berhasil diterbitkan!'
-      })
+      await fetchModules()
 
       setTimeout(() => {
-        fetchModules()
-        resetFormToInitial()
-      }, 1500)
-
-    } catch (error: unknown) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : 'Gagal memproses operasi database.'
-
-      console.error(error)
-
+        resetForm()
+      }, 1000)
+    } catch (error) {
+      console.error('handleSubmit error:', error)
       setStatus({
         success: false,
-        msg
+        msg: error instanceof Error
+          ? error.message
+          : 'Gagal menyimpan materi.',
       })
     } finally {
       setIsLoading(false)
     }
   }
 
-  // ============================================================
-  // COMPUTED
-  // ============================================================
+  const filteredModulesList = useMemo(() => {
+    if (!filterSubjectId) return modulesList
 
-  const filteredModulesList =
-    modulesList.filter((mod) =>
-      filterSubjectId
-        ? mod.subject?.trim().toLowerCase() ===
-          filterSubjectId.trim().toLowerCase()
-        : true
+    const subject = subjectsList.find(
+      (item) => item.id === filterSubjectId
     )
 
-  // ============================================================
-  // CORRECTION BADGE
-  // ============================================================
+    if (!subject) return modulesList
 
-  const getCorrectionBadge = (
-    moduleId: string
-  ) => {
-    const summary =
-      correctionMap[moduleId]
-
-    if (
-      !summary ||
-      summary.total === 0
-    ) {
-      return null
-    }
-
-    if (summary.pending === 0) {
-      return (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-          <ClipboardCheck className="w-2.5 h-2.5" />
-          Semua Terkoreksi ({summary.total})
-        </span>
-      )
-    }
-
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
-        <Clock className="w-2.5 h-2.5" />
-        {summary.pending} Belum Dikoreksi
-      </span>
+    return modulesList.filter(
+      (module) =>
+        module.subject?.trim().toLowerCase() ===
+        subject.name.trim().toLowerCase()
     )
-  }
+  }, [filterSubjectId, modulesList, subjectsList])
 
-  // ============================================================
-  // RENDER
-  // ============================================================
 
   return (
-    <div className="w-full min-h-screen bg-white text-slate-800 p-4 md:p-8 selection:bg-purple-600 selection:text-white">
-      <div className="max-w-3xl mx-auto space-y-6 pb-20">
-
-        {/* HEADER */}
-        <div className="flex items-center justify-between">
+    <div className="w-full min-h-screen bg-white text-slate-800 p-4 md:p-8">
+      <div className="max-w-4xl mx-auto space-y-6 pb-20">
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={() => {
-              if (viewMode === 'form') {
-                resetFormToInitial()
-              } else {
-                router.push('/super-admin')
-              }
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 border border-slate-200/60 hover:border-purple-200 rounded-xl transition-all cursor-pointer"
+            onClick={() =>
+              viewMode === 'form'
+                ? resetForm()
+                : router.push('/super-admin')
+            }
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-600 hover:text-purple-600 bg-slate-50 hover:bg-purple-50 border border-slate-200 rounded-xl transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-
-            {viewMode === 'form'
-              ? 'Batalkan & Kembali ke List'
-              : 'Kembali ke Panel Utama'}
+            {viewMode === 'form' ? 'Kembali ke Daftar Materi' : 'Kembali ke Dashboard'}
           </button>
 
           {viewMode === 'list' && (
@@ -1312,342 +603,220 @@ export default function ManageMateriPage() {
                 setStatus({})
                 setViewMode('form')
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-black text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
-              Buat Modul Baru
+              Buat Materi Baru
             </button>
           )}
         </div>
 
-        {/* TITLE */}
-        <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            CMS: Manajemen Modul & Kuis
-          </h2>
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-950 via-purple-900 to-slate-900 p-6 sm:p-8 text-white shadow-lg">
+          <div className="absolute right-0 bottom-0 translate-x-10 translate-y-10 opacity-10">
+            <BookOpen className="w-64 h-64" />
+          </div>
 
-          <p className="text-xs sm:text-sm font-medium text-slate-400 leading-relaxed">
-            {viewMode === 'list'
-              ? 'Kelola, perbarui, atau eliminasi seluruh pustaka materi microlearning yang telah mengudara.'
-              : 'Formulir modifikasi satu pintu untuk mempublikasikan materi microlearning interaktif.'}
-          </p>
+          <div className="relative z-10 space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/20 text-purple-200 text-[10px] font-black uppercase tracking-wider">
+              <BookOpen className="w-3.5 h-3.5" />
+              Manage Materi
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+              {viewMode === 'form'
+                ? editingModuleId
+                  ? 'Edit Materi'
+                  : 'Buat Materi Baru'
+                : 'Manajemen Materi Pembelajaran'}
+            </h1>
+
+            <p className="text-sm text-purple-100/70 max-w-2xl">
+              {viewMode === 'form'
+                ? 'Kelola materi secara terpisah dari kuis. Data halaman ini hanya disimpan ke tabel modules.'
+                : 'Kelola seluruh materi microlearning tanpa membuat atau mengubah kuis secara otomatis.'}
+            </p>
+          </div>
         </div>
 
-        {/* VIEWS */}
         <AnimatePresence mode="wait">
           {viewMode === 'list' ? (
-
-            /* ==================================================
-               LIST VIEW
-               ================================================== */
-
             <motion.div
-              key="list-view"
-              initial={{
-                opacity: 0,
-                y: 10
-              }}
-              animate={{
-                opacity: 1,
-                y: 0
-              }}
-              exit={{
-                opacity: 0,
-                y: -10
-              }}
-              className="space-y-4"
+              key="list"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="space-y-5"
             >
-
-              {/* FILTER */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <GraduationCap className="w-4 h-4 text-slate-400 shrink-0" />
-
-                <label className="text-xs font-bold text-slate-500 shrink-0">
-                  Filter Mapel:
-                </label>
-
-                <select
-                  value={filterSubjectId}
-                  onChange={(e) =>
-                    setFilterSubjectId(
-                      e.target.value
-                    )
-                  }
-                  disabled={
-                    isFetchingSubjects
-                  }
-                  className="flex-1 min-w-[160px] rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <option value="">
-                    Semua Mata Pelajaran
-                  </option>
-
-                  {subjectsList.map(
-                    (s) => (
-                      <option
-                        key={s.id}
-                        value={s.name}
-                      >
-                        {s.name}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                {filterSubjectId && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setFilterSubjectId('')
-                    }
-                    className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors underline cursor-pointer"
-                  >
-                    Reset
-                  </button>
-                )}
-
-                <span className="text-xs text-slate-400 ml-auto">
-                  {filteredModulesList.length}{' '}
-                  modul ditampilkan
-                </span>
-              </div>
-
-              {/* LOADING */}
-              {isFetching ? (
-                <div className="w-full p-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
-
-                  <span className="text-xs font-bold">
-                    Sinkronisasi data database...
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="flex items-center gap-2">
+                  <ListFilter className="w-4 h-4 text-slate-400" />
+                  <span className="text-xs font-bold text-slate-500">
+                    Filter Mapel
                   </span>
                 </div>
 
-              ) : filteredModulesList.length === 0 ? (
+                <select
+                  value={filterSubjectId}
+                  onChange={(e) => setFilterSubjectId(e.target.value)}
+                  disabled={isFetchingSubjects}
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="">Semua Mata Pelajaran</option>
+                  {subjectsList.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
 
-                /* EMPTY */
-                <div className="w-full text-center p-12 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
-                  <ListFilter className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <span className="text-xs text-slate-400 font-medium">
+                  {filteredModulesList.length} materi
+                </span>
+              </div>
 
-                  <h4 className="text-sm font-bold text-slate-700">
-                    {filterSubjectId
-                      ? 'Tidak ada modul untuk mata pelajaran ini'
-                      : 'Belum ada modul yang terbit'}
-                  </h4>
-                </div>
-
-              ) : (
-
-                /* MODULE LIST */
-                <div className="grid grid-cols-1 gap-3">
-                  {filteredModulesList.map(
-                    (mod) => (
-                      <div
-                        key={mod.id}
-                        className="border border-slate-200/70 p-4 rounded-2xl bg-white flex items-center justify-between gap-4 shadow-2xs hover:border-slate-300 transition-all"
-                      >
-
-                        <div className="space-y-1.5 min-w-0 flex-1">
-
-                          <div className="flex items-center gap-1.5 flex-wrap">
-
-                            {mod.file_url ? (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md uppercase">
-                                <FileText className="w-2.5 h-2.5" />
-                                File {mod.file_type}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md uppercase">
-                                <BookOpen className="w-2.5 h-2.5" />
-                                Teks & Audio
-                              </span>
-                            )}
-
-                            {mod.subject && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                                <GraduationCap className="w-2.5 h-2.5" />
-                                {mod.subject}
-                              </span>
-                            )}
-
-                            {getCorrectionBadge(
-                              mod.id
-                            )}
-
-                          </div>
-
-                          <h4 className="text-sm font-black text-slate-900 truncate pr-2">
-                            {mod.title}
-                          </h4>
-
-                        </div>
-
-                        {/* ACTION */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleEditClick(
-                                mod
-                              )
-                            }
-                            disabled={
-                              isLoading
-                            }
-                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-purple-50 text-slate-500 hover:text-purple-600 flex items-center justify-center border border-slate-200/40 hover:border-purple-200 transition-all cursor-pointer disabled:opacity-50"
-                            title="Ubah Materi"
-                          >
-                            {isLoading &&
-                            editingModuleId ===
-                              mod.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Edit3 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDeleteClick(
-                                mod.id
-                              )
-                            }
-                            className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-600 flex items-center justify-center border border-slate-200/40 hover:border-red-200 transition-all cursor-pointer"
-                            title="Hapus Materi"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-
-                        </div>
-                      </div>
-                    )
+              {status.msg && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                    status.success
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {status.success ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4" />
                   )}
+                  {status.msg}
                 </div>
               )}
 
+              {isFetching ? (
+                <div className="p-12 flex items-center justify-center gap-2 text-xs text-slate-400">
+                  <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                  Memuat materi...
+                </div>
+              ) : filteredModulesList.length === 0 ? (
+                <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                  <BookOpen className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm font-black text-slate-700">
+                    Belum ada materi
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Klik &quot;Buat Materi Baru&quot; untuk menambahkan materi.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {filteredModulesList.map((module) => (
+                    <motion.div
+                      key={module.id}
+                      whileHover={{ y: -2 }}
+                      className="border border-slate-200 rounded-2xl bg-white p-4 flex items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black text-purple-700 bg-purple-50 px-2 py-1 rounded-md">
+                            {module.file_url ? (
+                              <FileText className="w-3 h-3" />
+                            ) : (
+                              <BookOpen className="w-3 h-3" />
+                            )}
+                            {module.file_url
+                              ? `File ${module.file_type || ''}`
+                              : 'Teks & Audio'}
+                          </span>
+
+                          {module.subject && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-md">
+                              <GraduationCap className="w-3 h-3" />
+                              {module.subject}
+                            </span>
+                          )}
+
+                        </div>
+
+                        <h3 className="text-sm font-black text-slate-900 truncate">
+                          {module.title}
+                        </h3>
+
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {module.created_at
+                            ? new Date(module.created_at).toLocaleDateString(
+                                'id-ID',
+                                {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                }
+                              )
+                            : '-'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(module)}
+                          disabled={isLoading}
+                          className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-purple-50 text-slate-500 hover:text-purple-600 border border-slate-200 flex items-center justify-center transition-all"
+                          title="Edit Materi"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(module.id)}
+                          disabled={isLoading}
+                          className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 flex items-center justify-center transition-all"
+                          title="Hapus Materi"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </motion.div>
-
           ) : (
-
-            /* ==================================================
-               FORM VIEW
-               ================================================== */
-
             <motion.form
-              key="form-view"
-              initial={{
-                opacity: 0,
-                y: 10
-              }}
-              animate={{
-                opacity: 1,
-                y: 0
-              }}
-              exit={{
-                opacity: 0,
-                y: -10
-              }}
+              key="form"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
               onSubmit={handleSubmit}
-              className="space-y-8"
+              className="space-y-6"
             >
-
-              {/* ==================================================
-                 BAGIAN 1: MATERI
-                 ================================================== */}
-
-              <div className="border border-slate-200/80 rounded-2xl p-5 sm:p-6 bg-white space-y-5 shadow-xs">
-
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
-
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
-                      <BookOpen className="w-4 h-4" />
-                    </div>
-
-                    <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                      Bagian 1: Materi Microlearning{' '}
-                      {editingModuleId &&
-                        '(Mode Ubah)'}
-                    </h3>
-                  </div>
-
-                  <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/40">
-
-                    <button
-                      type="button"
-                      disabled={
-                        editingModuleId !== null
-                      }
-                      onClick={() =>
-                        setContentType(
-                          'text'
-                        )
-                      }
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 disabled:opacity-50 ${
-                        contentType ===
-                        'text'
-                          ? 'bg-white text-purple-600 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      <BookOpen className="w-3 h-3" />
-                      Teks & Audio
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={
-                        editingModuleId !== null
-                      }
-                      onClick={() =>
-                        setContentType(
-                          'file'
-                        )
-                      }
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 disabled:opacity-50 ${
-                        contentType ===
-                        'file'
-                          ? 'bg-white text-purple-600 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      <FileText className="w-3 h-3" />
-                      File Dokumen
-                    </button>
-
-                  </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <BookOpen className="w-4 h-4 text-purple-600" />
+                  <h2 className="text-sm font-black text-slate-900">
+                    Informasi Materi
+                  </h2>
                 </div>
 
-                {/* SUBJECT */}
-                <div className="space-y-1.5">
-
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <GraduationCap className="w-3.5 h-3.5 text-purple-500" />
-                    Mata Pelajaran{' '}
-                    <span className="text-red-500">
-                      *
-                    </span>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700">
+                    Mata Pelajaran <span className="text-red-500">*</span>
                   </label>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex gap-2">
                     <select
                       value={selectedSubjectName}
                       onChange={(e) => {
-                        const selectedName = e.target.value
-                        const selected = subjectsList.find(
-                          (subject) => subject.name === selectedName
+                        const name = e.target.value
+                        const subject = subjectsList.find(
+                          (item) => item.name === name
                         )
 
-                        setSelectedSubjectName(selectedName)
-                        setSelectedSubjectId(selected?.id || '')
+                        setSelectedSubjectName(name)
+                        setSelectedSubjectId(subject?.id || '')
                       }}
                       required
-                      disabled={
-                        isFetchingSubjects || isSubjectLoading
-                      }
-                      className="flex-1 min-w-0 rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all cursor-pointer disabled:opacity-60"
+                      disabled={isFetchingSubjects || isSubjectLoading}
+                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none"
                     >
                       <option value="">
                         {isFetchingSubjects
@@ -1655,9 +824,9 @@ export default function ManageMateriPage() {
                           : '-- Pilih Mata Pelajaran --'}
                       </option>
 
-                      {subjectsList.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          {s.name}
+                      {subjectsList.map((subject) => (
+                        <option key={subject.id} value={subject.name}>
+                          {subject.name}
                         </option>
                       ))}
                     </select>
@@ -1665,9 +834,8 @@ export default function ManageMateriPage() {
                     <button
                       type="button"
                       onClick={openAddSubjectModal}
-                      disabled={isSubjectLoading}
-                      title="Tambah mata pelajaran"
-                      className="w-10 h-10 shrink-0 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                      className="w-11 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center"
+                      title="Tambah Mata Pelajaran"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -1675,477 +843,189 @@ export default function ManageMateriPage() {
                     <button
                       type="button"
                       onClick={openManageSubjectModal}
-                      disabled={isSubjectLoading || subjectsList.length === 0}
-                      title="Kelola mata pelajaran"
-                      className="px-3 h-10 shrink-0 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5 text-[11px] font-black transition-all cursor-pointer disabled:opacity-50"
+                      disabled={!subjectsList.length}
+                      className="px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-black disabled:opacity-50"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
                       Kelola
                     </button>
                   </div>
 
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    Mata pelajaran dikelola langsung dari database Supabase.
+                  <p className="text-[10px] text-slate-400">
+                    Nilai yang disimpan ke modules.subject adalah nama mata pelajaran.
                   </p>
                 </div>
 
-                {/* JUDUL MODUL */}
-                <div className="space-y-1.5">
-
+                <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-700">
-                    Judul Materi Pembelajaran{' '}
-                    <span className="text-red-500">
-                      *
-                    </span>
+                    Judul Materi <span className="text-red-500">*</span>
                   </label>
 
                   <input
                     type="text"
                     required
-                    value={
-                      moduleTitle
-                    }
-                    onChange={(e) =>
-                      setModuleTitle(
-                        e.target.value
-                      )
-                    }
-                    placeholder="Misal: Pengenalan Dasar Pemrograman Python"
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all"
+                    value={moduleTitle}
+                    onChange={(e) => setModuleTitle(e.target.value)}
+                    placeholder="Contoh: Greetings & Introduction"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none"
                   />
                 </div>
 
-                {/* CONTENT TEXT */}
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setContentType('text')}
+                    disabled={editingModuleId !== null}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold ${
+                      contentType === 'text'
+                        ? 'bg-white text-purple-600 shadow-sm'
+                        : 'text-slate-500'
+                    } disabled:opacity-50`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 inline mr-1" />
+                    Teks & Audio
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setContentType('file')}
+                    disabled={editingModuleId !== null}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold ${
+                      contentType === 'file'
+                        ? 'bg-white text-purple-600 shadow-sm'
+                        : 'text-slate-500'
+                    } disabled:opacity-50`}
+                  >
+                    <FileText className="w-3.5 h-3.5 inline mr-1" />
+                    File Dokumen
+                  </button>
+                </div>
+
                 {contentType === 'text' ? (
                   <>
-                    <div className="space-y-1.5">
-
+                    <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-700">
-                        Konten Penjelasan Teks
+                        Konten Materi
                       </label>
 
                       <textarea
-                        rows={5}
-                        value={
-                          moduleContent
-                        }
-                        onChange={(e) =>
-                          setModuleContent(
-                            e.target.value
-                          )
-                        }
-                        placeholder="Tuliskan rangkuman materi lengkap di sini..."
-                        className="w-full rounded-xl border border-slate-200 p-3.5 text-xs font-medium text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all"
+                        rows={7}
+                        value={moduleContent}
+                        onChange={(e) => setModuleContent(e.target.value)}
+                        placeholder="Tuliskan materi pembelajaran..."
+                        className="w-full rounded-xl border border-slate-200 p-3 text-xs font-medium bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none resize-y"
                       />
-
                     </div>
 
-                    <div className="space-y-1.5">
-
-                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                         <Music className="w-3.5 h-3.5 text-slate-400" />
-                        URL Audio Podcasting (Opsional)
+                        URL Audio
                       </label>
 
                       <input
                         type="url"
-                        value={
-                          audioUrl
-                        }
-                        onChange={(e) =>
-                          setAudioUrl(
-                            e.target.value
-                          )
-                        }
+                        value={audioUrl}
+                        onChange={(e) => setAudioUrl(e.target.value)}
                         placeholder="https://..."
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none"
                       />
-
                     </div>
                   </>
                 ) : (
-
-                  /* FILE */
                   <div className="space-y-2">
-
                     <label className="text-xs font-bold text-slate-700">
-                      Unggah File PDF / Word Document
+                      File PDF / Word
                     </label>
 
                     <div
                       onDragOver={(e) => {
                         e.preventDefault()
-                        setIsDragActive(
-                          true
-                        )
+                        setIsDragActive(true)
                       }}
-                      onDragLeave={() =>
-                        setIsDragActive(
-                          false
-                        )
-                      }
+                      onDragLeave={() => setIsDragActive(false)}
                       onDrop={(e) => {
                         e.preventDefault()
+                        setIsDragActive(false)
 
-                        setIsDragActive(
-                          false
-                        )
-
-                        if (
-                          e.dataTransfer
-                            .files?.[0]
-                        ) {
-                          setFileDoc(
-                            e.dataTransfer
-                              .files[0]
-                          )
-                        }
+                        const file = e.dataTransfer.files?.[0]
+                        if (file) setFileDoc(file)
                       }}
-                      className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all ${
+                      className={`border-2 border-dashed rounded-2xl p-8 text-center ${
                         isDragActive
-                          ? 'border-purple-500 bg-purple-50/50'
-                          : 'border-slate-200 bg-slate-50/50'
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-slate-200 bg-slate-50/70'
                       }`}
                     >
-
-                      <UploadCloud className="w-8 h-8 text-purple-500 mx-auto mb-2" />
+                      <UploadCloud className="w-9 h-9 text-purple-500 mx-auto mb-2" />
 
                       <p className="text-xs font-bold text-slate-700">
                         {fileDoc
                           ? fileDoc.name
                           : existingFileUrl
-                            ? 'File lama terlampir (upload baru untuk mengganti)'
+                            ? 'File lama masih terpasang'
                             : 'Tarik & lepas file ke sini'}
                       </p>
 
                       <input
+                        id="doc-upload-input"
                         type="file"
                         accept=".pdf,.doc,.docx"
-                        onChange={(e) =>
-                          e.target.files?.[0] &&
-                          setFileDoc(
-                            e.target.files[0]
-                          )
-                        }
                         className="hidden"
-                        id="doc-upload-input"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) setFileDoc(file)
+                        }}
                       />
 
                       <label
                         htmlFor="doc-upload-input"
-                        className="mt-3 inline-block px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-purple-600 hover:bg-purple-50 cursor-pointer shadow-2xs"
+                        className="inline-block mt-3 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-purple-600 cursor-pointer"
                       >
-                        Pilih File Dari Komputer
+                        Pilih File
                       </label>
-
                     </div>
                   </div>
                 )}
-
               </div>
-
-              {/* ==================================================
-                 BAGIAN 2: KUIS
-                 ================================================== */}
-
-              <div className="border border-slate-200/80 rounded-2xl p-5 sm:p-6 bg-white space-y-6 shadow-xs">
-
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-
-                  <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
-                    <HelpCircle className="w-4 h-4" />
-                  </div>
-
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                    Bagian 2: Evaluasi & Paket Soal Kuis
-                  </h3>
-
-                </div>
-
-                {/* JUDUL KUIS */}
-                <div className="space-y-1.5">
-
-                  <label className="text-xs font-bold text-slate-700">
-                    Judul Paket Kuis
-                  </label>
-
-                  <input
-                    type="text"
-                    value={
-                      quizTitle
-                    }
-                    onChange={(e) =>
-                      setQuizTitle(
-                        e.target.value
-                      )
-                    }
-                    placeholder={`Misal: Evaluasi ${moduleTitle || 'Materi'}`}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all"
-                  />
-
-                </div>
-
-                {/* QUESTIONS */}
-                <div className="space-y-4">
-
-                  {questions.map(
-                    (q, qIndex) => (
-                      <div
-                        key={qIndex}
-                        className="p-4 border border-slate-200/80 rounded-xl bg-slate-50/50 space-y-3"
-                      >
-
-                        <div className="flex items-center justify-between">
-
-                          <span className="text-xs font-black text-slate-700 uppercase">
-                            Soal #{qIndex + 1}
-                          </span>
-
-                          <div className="flex items-center gap-2">
-
-                            <select
-                              value={
-                                q.type ||
-                                'multiple_choice'
-                              }
-                              onChange={(e) =>
-                                handleQuestionChange(
-                                  qIndex,
-                                  'type',
-                                  e.target.value
-                                )
-                              }
-                              className="text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700"
-                            >
-                              <option value="multiple_choice">
-                                Pilihan Ganda
-                              </option>
-
-                              <option value="essay">
-                                Essay / Uraian
-                              </option>
-                            </select>
-
-                            {questions.length >
-                              1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeQuestionField(
-                                    qIndex
-                                  )
-                                }
-                                className="text-xs text-red-500 font-bold hover:underline"
-                              >
-                                Hapus
-                              </button>
-                            )}
-
-                          </div>
-                        </div>
-
-                        {/* QUESTION */}
-                        <input
-                          type="text"
-                          required
-                          value={
-                            q.question
-                          }
-                          onChange={(e) =>
-                            handleQuestionChange(
-                              qIndex,
-                              'question',
-                              e.target.value
-                            )
-                          }
-                          placeholder="Tuliskan pertanyaan soal..."
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-800 bg-white"
-                        />
-
-                        {/* ESSAY */}
-                        {q.type ===
-                        'essay' ? (
-
-                          <div className="space-y-1">
-
-                            <label className="text-[11px] font-bold text-slate-500">
-                              Panduan Kunci Jawaban Essay (Pedoman Korektor)
-                            </label>
-
-                            <textarea
-                              rows={2}
-                              value={
-                                q.answer_key ||
-                                ''
-                              }
-                              onChange={(e) =>
-                                handleQuestionChange(
-                                  qIndex,
-                                  'answer_key',
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Masukkan kata kunci atau poin-poin penilai..."
-                              className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium text-slate-800 bg-white"
-                            />
-
-                          </div>
-
-                        ) : (
-
-                          /* MULTIPLE CHOICE */
-                          <div className="space-y-2">
-
-                            <label className="text-[11px] font-bold text-slate-500">
-                              Pilihan Jawaban (Tentukan Kunci Jawaban)
-                            </label>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                              {(
-                                q.options ||
-                                [
-                                  '',
-                                  '',
-                                  '',
-                                  ''
-                                ]
-                              ).map(
-                                (
-                                  opt,
-                                  optIdx
-                                ) => (
-                                  <div
-                                    key={
-                                      optIdx
-                                    }
-                                    className="flex items-center gap-2 bg-white p-1.5 border border-slate-200 rounded-lg"
-                                  >
-
-                                    <input
-                                      type="radio"
-                                      name={`correct_ans_${qIndex}`}
-                                      checked={
-                                        q.correct_answer ===
-                                          opt &&
-                                        opt !==
-                                          ''
-                                      }
-                                      onChange={() =>
-                                        handleQuestionChange(
-                                          qIndex,
-                                          'correct_answer',
-                                          opt
-                                        )
-                                      }
-                                      className="w-3.5 h-3.5 text-purple-600"
-                                    />
-
-                                    <input
-                                      type="text"
-                                      value={
-                                        opt
-                                      }
-                                      onChange={(
-                                        e
-                                      ) =>
-                                        handleQuestionChange(
-                                          qIndex,
-                                          'option',
-                                          e.target
-                                            .value,
-                                          optIdx
-                                        )
-                                      }
-                                      placeholder={`Opsi ${String.fromCharCode(
-                                        65 +
-                                          optIdx
-                                      )}`}
-                                      className="w-full text-xs font-medium text-slate-800 focus:outline-none"
-                                    />
-
-                                  </div>
-                                )
-                              )}
-
-                            </div>
-                          </div>
-                        )}
-
-                      </div>
-                    )
-                  )}
-
-                  {/* ADD QUESTION */}
-                  <button
-                    type="button"
-                    onClick={
-                      addQuestionField
-                    }
-                    className="w-full py-2.5 border-2 border-dashed border-purple-200 hover:border-purple-400 text-purple-600 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Tambah Pertanyaan Kuis
-                  </button>
-
-                </div>
-              </div>
-
-              {/* ==================================================
-                 STATUS
-                 ================================================== */}
 
               {status.msg && (
                 <div
-                  className={`p-3.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                  className={`p-4 rounded-xl border text-xs font-bold flex items-center gap-2 ${
                     status.success
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : 'bg-red-50 border-red-200 text-red-700'
                   }`}
                 >
-
                   {status.success ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4" />
                   ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <AlertCircle className="w-4 h-4" />
                   )}
-
-                  <span>
-                    {status.msg}
-                  </span>
-
+                  {status.msg}
                 </div>
               )}
 
-              {/* ==================================================
-                 SUBMIT
-                 ================================================== */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-
-                {editingModuleId
-                  ? 'Simpan Perubahan Modul & Kuis'
-                  : 'Terbitkan Modul & Kuis Baru'}
-
-              </button>
-
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {editingModuleId ? 'Simpan Perubahan Materi' : 'Terbitkan Materi'}
+                </button>
+              </div>
             </motion.form>
           )}
         </AnimatePresence>
-
-        {/* ==================================================
-           MODAL: MANAJEMEN MATA PELAJARAN
-           ================================================== */}
 
         <AnimatePresence>
           {isSubjectModalOpen && (
@@ -2153,31 +1033,28 @@ export default function ManageMateriPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm"
+              className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4"
               onMouseDown={(e) => {
-                if (e.target === e.currentTarget) {
-                  closeSubjectModal()
-                }
+                if (e.target === e.currentTarget) closeSubjectModal()
               }}
             >
               <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                initial={{ opacity: 0, y: 15, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 20, scale: 0.97 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-lg max-h-[90vh] overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-2xl"
+                exit={{ opacity: 0, y: 15, scale: 0.98 }}
+                className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"
               >
-                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-black text-slate-950">
+                    <h3 className="text-sm font-black text-slate-900">
                       {subjectModalMode === 'add' && !editingSubjectId
                         ? 'Tambah Mata Pelajaran'
-                        : subjectModalMode === 'add' && editingSubjectId
+                        : subjectModalMode === 'add'
                           ? 'Edit Mata Pelajaran'
                           : 'Kelola Mata Pelajaran'}
                     </h3>
-                    <p className="text-[10px] font-medium text-slate-400 mt-0.5">
-                      Data tersimpan langsung ke tabel subjects di Supabase.
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Data berasal dari tabel subjects.
                     </p>
                   </div>
 
@@ -2185,59 +1062,45 @@ export default function ManageMateriPage() {
                     type="button"
                     onClick={closeSubjectModal}
                     disabled={isSubjectLoading}
-                    className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
-                    title="Tutup"
+                    className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-red-50 flex items-center justify-center"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="p-5 overflow-y-auto max-h-[calc(90vh-80px)] space-y-4">
+                <div className="p-5 max-h-[75vh] overflow-y-auto">
                   {subjectModalMode === 'add' ? (
-                    <form
-                      onSubmit={handleSaveSubject}
-                      className="space-y-4"
-                    >
-                      <div className="space-y-1.5">
+                    <form onSubmit={handleSaveSubject} className="space-y-4">
+                      <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-700">
                           Nama Mata Pelajaran
-                          <span className="text-red-500 ml-1">*</span>
                         </label>
 
                         <input
                           autoFocus
                           type="text"
                           value={subjectName}
-                          onChange={(e) =>
-                            setSubjectName(e.target.value)
-                          }
-                          placeholder="Contoh: Bahasa Inggris"
                           maxLength={100}
                           disabled={isSubjectLoading}
-                          className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-xs font-semibold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/10 transition-all disabled:opacity-60"
+                          onChange={(e) => setSubjectName(e.target.value)}
+                          placeholder="Contoh: IPA"
+                          className="w-full rounded-xl border border-slate-200 px-3 py-3 text-xs font-semibold bg-slate-50 focus:bg-white focus:border-purple-500 focus:outline-none"
                         />
-
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span>
-                            Nama tidak boleh sama dengan mata pelajaran lain.
-                          </span>
-                          <span>{subjectName.length}/100</span>
-                        </div>
                       </div>
 
                       {subjectStatus.msg && (
                         <div
                           className={`p-3 rounded-xl text-[11px] font-bold ${
                             subjectStatus.success
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-red-50 text-red-700 border border-red-200'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-red-50 text-red-700'
                           }`}
                         >
                           {subjectStatus.msg}
                         </div>
                       )}
 
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -2245,142 +1108,93 @@ export default function ManageMateriPage() {
                               setEditingSubjectId(null)
                               setSubjectName('')
                               setSubjectStatus({})
+                              setSubjectModalMode('manage')
                             } else {
                               closeSubjectModal()
                             }
                           }}
-                          disabled={isSubjectLoading}
-                          className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-black transition-all cursor-pointer disabled:opacity-50"
+                          className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-black"
                         >
-                          {editingSubjectId ? 'Batal Edit' : 'Batal'}
+                          Batal
                         </button>
 
                         <button
                           type="submit"
-                          disabled={
-                            isSubjectLoading ||
-                            !subjectName.trim()
-                          }
-                          className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          disabled={isSubjectLoading || !subjectName.trim()}
+                          className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50"
                         >
-                          {isSubjectLoading ? (
+                          {isSubjectLoading && (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="w-3.5 h-3.5" />
                           )}
-                          {editingSubjectId
-                            ? 'Simpan Perubahan'
-                            : 'Tambah Mata Pelajaran'}
+                          {editingSubjectId ? 'Simpan Perubahan' : 'Tambah'}
                         </button>
                       </div>
                     </form>
                   ) : (
-                    <>
+                    <div className="space-y-3">
                       {subjectStatus.msg && (
                         <div
                           className={`p-3 rounded-xl text-[11px] font-bold ${
                             subjectStatus.success
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-red-50 text-red-700 border border-red-200'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-red-50 text-red-700'
                           }`}
                         >
                           {subjectStatus.msg}
                         </div>
                       )}
 
-                      <div className="space-y-2">
-                        {subjectsList.map((subject) => (
-                          <div
-                            key={subject.id}
-                            className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300 transition-all"
-                          >
-                            <div className="w-9 h-9 shrink-0 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                              <GraduationCap className="w-4 h-4" />
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-black text-slate-800 truncate">
-                                {subject.name}
-                              </p>
-                              <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-                                ID: {subject.id}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleEditSubject(subject)
-                                }
-                                disabled={isSubjectLoading}
-                                className="w-8 h-8 rounded-lg bg-white hover:bg-purple-50 text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
-                                title="Edit mata pelajaran"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDeleteSubject(subject)
-                                }
-                                disabled={isSubjectLoading}
-                                className="w-8 h-8 rounded-lg bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 flex items-center justify-center transition-all cursor-pointer disabled:opacity-50"
-                                title="Hapus mata pelajaran"
-                              >
-                                {isSubjectLoading ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
+                      {subjectsList.map((subject) => (
+                        <div
+                          key={subject.id}
+                          className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200 bg-slate-50"
+                        >
+                          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                            <GraduationCap className="w-4 h-4" />
                           </div>
-                        ))}
 
-                        {subjectsList.length === 0 && (
-                          <div className="py-10 text-center border-2 border-dashed border-slate-100 rounded-2xl">
-                            <GraduationCap className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            <p className="text-xs font-bold text-slate-500">
-                              Belum ada mata pelajaran.
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-black text-slate-800 truncate">
+                              {subject.name}
                             </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubjectModalMode('add')
-                                setSubjectName('')
-                                setSubjectStatus({})
-                              }}
-                              className="mt-3 text-xs font-black text-purple-600 hover:text-purple-700"
-                            >
-                              + Tambah mata pelajaran pertama
-                            </button>
+                            <p className="text-[9px] text-slate-400 truncate">
+                              ID: {subject.id}
+                            </p>
                           </div>
-                        )}
-                      </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleEditSubject(subject)}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-purple-600"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubject(subject)}
+                            disabled={isSubjectLoading}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-red-600 disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
 
                       <button
                         type="button"
-                        onClick={() => {
-                          setSubjectModalMode('add')
-                          setEditingSubjectId(null)
-                          setSubjectName('')
-                          setSubjectStatus({})
-                        }}
-                        className="w-full py-2.5 border-2 border-dashed border-purple-200 hover:border-purple-400 text-purple-600 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        onClick={openAddSubjectModal}
+                        className="w-full py-2.5 border-2 border-dashed border-purple-200 text-purple-600 rounded-xl text-xs font-black"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        Tambah Mata Pelajaran
+                        + Tambah Mata Pelajaran
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
-
       </div>
     </div>
   )

@@ -11,7 +11,7 @@ import {
   ShieldAlert, 
   Lock,
   Video,
-  ClipboardList
+  PenLine
 } from 'lucide-react'
 
 export default function SuperAdminDashboard() {
@@ -29,7 +29,7 @@ export default function SuperAdminDashboard() {
     getAdminData()
   }, [supabase])
 
-  // Konfigurasi Menu Kontrol Utama Super Admin (Kini Berjumlah 4 Kolom Grid)
+  // Konfigurasi Menu Kontrol Utama Super Admin (4 Kolom Grid)
   const menuItems = [
     {
       title: "CMS Konten Materi",
@@ -59,13 +59,13 @@ export default function SuperAdminDashboard() {
       actionText: "Kelola Video"
     },
     {
-      title: "Pekerjaan Rumah (PR)",
-      desc: "Unggah, rancang, dan kategorikan tugas Pekerjaan Rumah (PR) bagi siswa berdasarkan kategori Mata Pelajaran (Mapel).",
-      icon: ClipboardList,
+      title: "Kelola Kuis Mandiri",
+      desc: "Rancang dan kelola paket kuis evaluasi mandiri berisi soal Pilihan Ganda dan Essay untuk anak binaan.",
+      icon: PenLine,
       bgColor: "bg-sky-50 text-sky-600",
       borderHover: "hover:border-sky-300 hover:shadow-sky-100/50",
-      link: "/super-admin/manage-homework",
-      actionText: "Kelola PR"
+      link: "/super-admin/manage-quizzes",
+      actionText: "Kelola Kuis"
     }
   ]
 
