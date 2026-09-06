@@ -158,18 +158,18 @@ export default function ModuleDetailPage() {
       setIsLoading(true)
 
       try {
-        const [{ data: moduleRes }, { data: quizRes }] = await Promise.all([
+        const [{ data: moduleRes, error: moduleError }, { data: quizRes, error: quizError }] = await Promise.all([
           supabase
             .from('modules')
             .select('*')
             .eq('id', id)
-            .single(),
+            .maybeSingle(),
 
           supabase
             .from('quizzes')
             .select('*')
             .eq('module_id', id)
-            .single(),
+            .maybeSingle(),
         ])
 
         if (moduleRes) {

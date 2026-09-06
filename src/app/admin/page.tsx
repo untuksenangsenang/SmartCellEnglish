@@ -30,6 +30,13 @@ import {
   MessageSquare,
   UserX,
   Database,
+  Radio,
+  Mic,
+  Play,
+  Download,
+  ExternalLink,
+  Trash2,
+  Volume2,
 } from 'lucide-react'
 
 const supabase = createClient()
@@ -96,6 +103,14 @@ interface ScoreRow {
   module_id: string
   score: number | null
   completed_at: string | null
+}
+
+interface PodcastSubmission {
+  id: string
+  user_id: string
+  audio_storage_url: string
+  created_at?: string | null
+  [key: string]: unknown
 }
 
 // ============================================================
@@ -200,7 +215,7 @@ function getAnswerText(row: EssaySubmission) {
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<
-    'monitoring' | 'kuis_essay' | 'users'
+    'monitoring' | 'kuis_essay' | 'podcast' | 'users'
   >('monitoring')
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -277,6 +292,18 @@ export default function AdminDashboard() {
     isSubmittingCorrection,
     setIsSubmittingCorrection,
   ] = useState(false)
+
+  // ==========================================================
+  // PODCAST STATE
+  // ==========================================================
+
+  const [podcastSubmissions, setPodcastSubmissions] = useState<
+    PodcastSubmission[]
+  >([])
+
+  const [isPodcastLoading, setIsPodcastLoading] = useState(false)
+  const [selectedPodcastStudentId, setSelectedPodcastStudentId] =
+    useState('')
 
   // ==========================================================
   // FETCH USERS
@@ -566,6 +593,72 @@ export default function AdminDashboard() {
     }, [])
 
   // ==========================================================
+  // FETCH PODCAST SUBMISSIONS
+  // ==========================================================
+
+  const fetchPodcastSubmissions = useCallback(async () => {
+    setIsPodcastLoading(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('podcast_submissions')
+        .select('*')
+        .order('created_at', {
+          ascending: false,
+        })
+
+      if (error) {
+        throw error
+      }
+
+      const normalized: PodcastSubmission[] = (data || []).map(
+        (row: Record<string, any>) => ({
+          id: String(row.id),
+          user_id: String(row.user_id || ''),
+          audio_storage_url: String(row.audio_storage_url || ''),
+          created_at: row.created_at || null,
+        })
+      )
+
+      setPodcastSubmissions(normalized)
+    } catch (error) {
+      console.error('Error fetching podcast submissions:', error)
+      setPodcastSubmissions([])
+    } finally {
+      setIsPodcastLoading(false)
+    }
+  }, [])
+
+  // ==========================================================
+  // DELETE PODCAST SUBMISSION
+  // ==========================================================
+
+  const handleDeletePodcast = async (id: string, username: string) => {
+    const confirmed = window.confirm(
+      `Apakah Anda yakin ingin menghapus rekaman podcast milik "${username}"?`
+    )
+
+    if (!confirmed) return
+
+    try {
+      const { error } = await supabase
+        .from('podcast_submissions')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      setPodcastSubmissions((prev) => prev.filter((p) => p.id !== id))
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal menghapus rekaman podcast.'
+      )
+    }
+  }
+
+  // ==========================================================
   // LOAD ALL DATA
   // ==========================================================
 
@@ -574,11 +667,13 @@ export default function AdminDashboard() {
       fetchUsers(),
       fetchScoreRows(),
       fetchEssaySubmissions(),
+      fetchPodcastSubmissions(),
     ])
   }, [
     fetchUsers,
     fetchScoreRows,
     fetchEssaySubmissions,
+    fetchPodcastSubmissions,
   ])
 
   useEffect(() => {
@@ -630,6 +725,17 @@ export default function AdminDashboard() {
           fetchEssaySubmissions()
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'podcast_submissions',
+        },
+        () => {
+          fetchPodcastSubmissions()
+        }
+      )
       .subscribe()
 
     return () => {
@@ -639,6 +745,7 @@ export default function AdminDashboard() {
     fetchUsers,
     fetchScoreRows,
     fetchEssaySubmissions,
+    fetchPodcastSubmissions,
   ])
 
   // ==========================================================
@@ -1027,6 +1134,42 @@ export default function AdminDashboard() {
     )
 
   // ==========================================================
+  // DERIVED PODCAST DATA
+  // ==========================================================
+
+  const filteredPodcasts = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase()
+
+    return podcastSubmissions.filter((podcast) => {
+      const student = users.find((u) => u.id === podcast.user_id)
+      const studentName = (student?.username || '').toLowerCase()
+      const studentEmail = (student?.email || '').toLowerCase()
+
+      if (
+        selectedPodcastStudentId &&
+        podcast.user_id !== selectedPodcastStudentId
+      ) {
+        return false
+      }
+
+      if (!keyword) {
+        return true
+      }
+
+      return (
+        studentName.includes(keyword) ||
+        studentEmail.includes(keyword) ||
+        podcast.audio_storage_url.toLowerCase().includes(keyword)
+      )
+    })
+  }, [podcastSubmissions, users, searchTerm, selectedPodcastStudentId])
+
+  const podcastStudentCount = useMemo(() => {
+    const set = new Set(podcastSubmissions.map((p) => p.user_id).filter(Boolean))
+    return set.size
+  }, [podcastSubmissions])
+
+  // ==========================================================
   // GLOBAL ANALYTICS
   // ==========================================================
 
@@ -1346,6 +1489,26 @@ export default function AdminDashboard() {
                 </span>
               )}
 
+            </button>
+
+            <button
+              onClick={() =>
+                setActiveTab('podcast')
+              }
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                activeTab ===
+                'podcast'
+                  ? 'bg-blue-700 text-white shadow-md'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Radio className="w-4 h-4 text-emerald-500" />
+              Monitoring Podcast
+              {podcastSubmissions.length > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                  {podcastSubmissions.length}
+                </span>
+              )}
             </button>
 
             <button
@@ -2461,6 +2624,281 @@ export default function AdminDashboard() {
 
               </AnimatePresence>
 
+            </motion.div>
+          )}
+
+          {/* ==================================================
+              PODCAST MONITORING
+          ================================================== */}
+
+          {activeTab === 'podcast' && (
+            <motion.div
+              key="podcast"
+              initial={{
+                opacity: 0,
+                y: 6,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                y: -6,
+              }}
+              className="space-y-6"
+            >
+              {/* PODCAST STATS KPI */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white border border-emerald-100 rounded-2xl p-5 shadow-2xs">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <Radio className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase text-slate-400">
+                        Total Rekaman Masuk
+                      </p>
+                      <p className="text-2xl font-black text-slate-900">
+                        {podcastSubmissions.length}
+                      </p>
+                      <p className="text-[11px] text-emerald-600 font-semibold">
+                        Siniar audio siswa
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-blue-100 rounded-2xl p-5 shadow-2xs">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase text-slate-400">
+                        Siswa Mengirimkan
+                      </p>
+                      <p className="text-2xl font-black text-slate-900">
+                        {podcastStudentCount}
+                      </p>
+                      <p className="text-[11px] text-blue-600 font-semibold">
+                        Dari {studentUsers.length} total siswa
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-purple-100 rounded-2xl p-5 shadow-2xs">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                      <Mic className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase text-slate-400">
+                        Rekaman Terakhir
+                      </p>
+                      <p className="text-sm font-black text-slate-900 mt-1 truncate max-w-[180px]">
+                        {podcastSubmissions.length > 0
+                          ? users.find(
+                              (u) => u.id === podcastSubmissions[0].user_id
+                            )?.username || 'Siswa'
+                          : '-'}
+                      </p>
+                      <p className="text-[11px] text-purple-600 font-semibold">
+                        {podcastSubmissions.length > 0 &&
+                        podcastSubmissions[0].created_at
+                          ? new Date(
+                              podcastSubmissions[0].created_at
+                            ).toLocaleDateString('id-ID', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Belum ada'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* PODCAST LIST HEADER & FILTER */}
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+                <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                      <Mic className="w-4 h-4 text-emerald-600" />
+                      Daftar Rekaman Siniar / Podcast Siswa
+                      <span className="text-slate-400">
+                        ({filteredPodcasts.length})
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Dengarkan hasil rekaman speaking anak binaan dan pantau
+                      perkembangannya.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedPodcastStudentId}
+                      onChange={(e) =>
+                        setSelectedPodcastStudentId(e.target.value)
+                      }
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-600"
+                    >
+                      <option value="">Semua Siswa</option>
+                      {studentUsers.map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.username}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={fetchPodcastSubmissions}
+                      className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-blue-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                {/* PODCAST LIST CONTENT */}
+                {isPodcastLoading ? (
+                  <div className="p-16 flex flex-col items-center justify-center gap-3 text-slate-400">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                    <p className="text-xs font-bold">
+                      Memuat rekaman podcast siswa...
+                    </p>
+                  </div>
+                ) : filteredPodcasts.length === 0 ? (
+                  <div className="p-16 text-center text-slate-400 space-y-2">
+                    <Radio className="w-12 h-12 mx-auto text-slate-300" />
+                    <p className="text-sm font-bold text-slate-700">
+                      Belum Ada Rekaman Podcast
+                    </p>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      {searchTerm || selectedPodcastStudentId
+                        ? 'Tidak ada rekaman yang sesuai dengan filter pencarian.'
+                        : 'Siswa belum mengirimkan rekaman podcast dari fitur Podcast Recorder.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {filteredPodcasts.map((podcast, idx) => {
+                      const student = users.find(
+                        (u) => u.id === podcast.user_id
+                      )
+                      const studentName = student?.username || 'Anak Binaan'
+                      const studentEmail = student?.email || 'Tidak ada email'
+
+                      const formattedDate = podcast.created_at
+                        ? new Date(podcast.created_at).toLocaleString(
+                            'id-ID',
+                            {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }
+                          )
+                        : '-'
+
+                      return (
+                        <div
+                          key={podcast.id}
+                          className="p-5 hover:bg-slate-50/70 transition-colors space-y-4"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-sm shadow-sm">
+                                {studentName.charAt(0).toUpperCase()}
+                              </div>
+
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-black text-sm text-slate-900">
+                                    {studentName}
+                                  </h4>
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Siswa #{idx + 1}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  {studentEmail}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto font-medium">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{formattedDate} WIB</span>
+                            </div>
+                          </div>
+
+                          {/* AUDIO PLAYER & CONTROLS */}
+                          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex-1 w-full flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                <Volume2 className="w-4 h-4" />
+                              </div>
+                              <audio
+                                src={podcast.audio_storage_url}
+                                controls
+                                preload="metadata"
+                                className="w-full h-9 accent-emerald-600"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                              <a
+                                href={podcast.audio_storage_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Buka berkas di tab baru"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Buka</span>
+                              </a>
+
+                              <a
+                                href={podcast.audio_storage_url}
+                                download={`podcast-${studentName.toLowerCase().replace(/\s+/g, '-')}.mp4`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Unduh berkas audio"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer shadow-2xs shadow-emerald-600/20"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Unduh</span>
+                              </a>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeletePodcast(
+                                    podcast.id,
+                                    studentName
+                                  )
+                                }
+                                title="Hapus rekaman"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-bold transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Hapus</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
